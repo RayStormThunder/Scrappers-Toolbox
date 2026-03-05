@@ -256,15 +256,6 @@ namespace LayoutBXLYT.Revolution
 
         public void Write(FileWriter writer, LayoutHeader header)
         {
-            if (MatColor != STColor8.White)
-                HasMaterialColor = true;
-            if (!ChanControl.HasDefaults())
-                HasChannelControl = true;
-            if (!BlendMode.HasDefaults())
-                HasBlendMode = true;
-            if (!((AlphaCompare)AlphaCompare).HasDefaults())
-                HasAlphaCompare = true;
-
             if (TextureMaps?.Length > 0 && TexCoordGens?.Count == 0)
             {
                 TexCoordGens = new List<TexCoordGenEntry>(TextureMaps.Length);
