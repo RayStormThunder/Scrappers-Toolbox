@@ -451,29 +451,78 @@ namespace LayoutBXLYT.Revolution
     };
 
                 frag_ss.AppendLine("const vec3 comp16 = vec3(1.0, 255.0, 0.0), comp24 = vec3(1.0, 255.0, 255.0 * 255.0);");
-                //if (Textures.Length == 0)
-                //{
-                //	frag_ss += "gl_FragColor = color_registers1;";
-                //}
-                //else
+
+                // NOTE: This whole block is written to be “no-crash” even if the file has weird/invalid TEV indices.
+                // Any out-of-range index falls back to a safe default so the UI can still render.
+
                 {
-                    if (TevStages.Length != 0 && TevStages[0] != null)
+                    // Common tables used by multiple stages
+                    string[] vKColor1 = { "color_consts0", "color_consts1", "color_consts2", "color_consts3" };
+                    string[] vKColor2 = { ".rgb", ".rrr", ".ggg", ".bbb", ".aaa" };
+
+                    string[] vKAlpha1 = { "color_consts0", "color_consts1", "color_consts2", "color_consts3" };
+                    string[] vKAlpha2 = { ".r", ".g", ".b", ".a" };
+
+                    string[] bias =
+                    {
+                        "+0",
+                        "+0.5",
+                        "-0.5"
+                    };
+
+                    string[] scale =
+                    {
+                        "*1",
+                        "*2",
+                        "*4",
+                        "*0.5"
+                    };
+
+                    // Helpers (no local-function dependency needed)
+                    Func<int, int, int, int> Safe = (v, len, fallback) => (v >= 0 && v < len) ? v : fallback;
+
+                    // Fallbacks:
+                    // - “last entry” is typically the neutral/default in these tables
+                    int ciFallback = (color_inputs.Length > 0) ? (color_inputs.Length - 1) : 0;
+                    int aiFallback = (alpha_inputs.Length > 0) ? (alpha_inputs.Length - 1) : 0;
+                    // - register 0 is safest if register id is invalid
+                    int regFallback = 0;
+
+                    if (TevStages != null && TevStages.Length != 0 && TevStages[0] != null)
                     {
                         foreach (var stage in TevStages)
                         {
-                            // current texture color
-                            // 0xff is a common value for a disabled texture
-                            if ((byte)stage.TexCoord < sampler_count)
+                            if (stage == null)
+                                continue;
+
+                            // ---------------------------
+                            // Texture sample (safe)
+                            // ---------------------------
+                            int texCoord = (int)(byte)stage.TexCoord;
+                            bool hasValidSampler = (texCoord >= 0 && texCoord < sampler_count);
+
+                            if (hasValidSampler)
                             {
-                                frag_ss.AppendFormat("if (hasTexture{0} == 1)\n", (int)stage.TexCoord);
-                                frag_ss.AppendFormat("  color_texture = texture2D(textures{0}, gl_TexCoord[{1}].st);\n", (int)stage.TexCoord, (int)stage.TexCoord);
+                                frag_ss.AppendFormat("if (hasTexture{0} == 1)\n", texCoord);
+                                frag_ss.AppendFormat("  color_texture = texture2D(textures{0}, gl_TexCoord[{0}].st);\n", texCoord);
                                 frag_ss.AppendLine("else");
                                 frag_ss.AppendLine("    color_texture = vec4(1);");
                             }
-                            string color = "";
-                            if ((byte)stage.ColorConstantSel <= 7)
+                            else
                             {
-                                switch ((byte)stage.ColorConstantSel)
+                                // IMPORTANT: always define color_texture so later stages can still work
+                                frag_ss.AppendLine("color_texture = vec4(1);");
+                            }
+
+                            // ---------------------------
+                            // Konst color/alpha (safe)
+                            // ---------------------------
+                            string color = "vec3(1.0)";
+                            int csel = (int)(byte)stage.ColorConstantSel;
+
+                            if (csel <= 7)
+                            {
+                                switch (csel)
                                 {
                                     case 0: color = "vec3(1.0)"; break;
                                     case 1: color = "vec3(0.875)"; break;
@@ -484,129 +533,127 @@ namespace LayoutBXLYT.Revolution
                                     case 6: color = "vec3(0.25)"; break;
                                     case 7: color = "vec3(0.125)"; break;
                                 }
-
                             }
-                            else if ((byte)stage.ColorConstantSel < 0xc)
+                            else if (csel < 0x0C)
                             {
-                                //warn("getColorOp(): unknown konst %x", konst);
-                                //return "ERROR";
+                                // unknown konst range -> neutral
                                 color = "vec3(1.0)";
                             }
                             else
                             {
-                                string[] v1 = { "color_consts0", "color_consts1", "color_consts2", "color_consts3" };
-                                string[] v2 = { ".rgb", ".rrr", ".ggg", ".bbb", ".aaa" };
+                                int idx1 = (csel - 0x0C) % 4;
+                                int idx2 = (csel - 0x0C) / 4;
 
-                                color = v1[((byte)stage.ColorConstantSel - 0xc) % 4] + v2[((byte)stage.ColorConstantSel - 0xc) / 4];
+                                idx1 = Safe(idx1, vKColor1.Length, 0);
+                                idx2 = Safe(idx2, vKColor2.Length, 0);
+
+                                color = vKColor1[idx1] + vKColor2[idx2];
                             }
-                            string alpha = "";
-                            if ((byte)stage.AlphaConstantSel <= 7)
+
+                            string alpha = "1.0";
+                            int asel = (int)(byte)stage.AlphaConstantSel;
+
+                            if (asel <= 7)
                             {
-                                switch (stage.AlphaConstantSel)
+                                // Keep your existing enum switch, but be safe if it comes through as a raw byte.
+                                switch ((TevKAlphaSel)stage.AlphaConstantSel)
                                 {
-                                    case TevKAlphaSel.Constant1_1: alpha = "vec3(1.0)"; break;
-                                    case TevKAlphaSel.Constant7_8: alpha = "vec3(0.875)"; break;
-                                    case TevKAlphaSel.Constant3_4: alpha = "vec3(0.75)"; break;
-                                    case TevKAlphaSel.Constant5_8: alpha = "vec3(0.625)"; break;
-                                    case TevKAlphaSel.Constant1_2: alpha = "vec3(0.5)"; break;
-                                    case TevKAlphaSel.Constant3_8: alpha = "vec3(0.375)"; break;
-                                    case TevKAlphaSel.Constant1_4: alpha = "vec3(0.25)"; break;
-                                    case TevKAlphaSel.Constant1_8: alpha = "vec3(0.125)"; break;
+                                    case TevKAlphaSel.Constant1_1: alpha = "1.0"; break;
+                                    case TevKAlphaSel.Constant7_8: alpha = "0.875"; break;
+                                    case TevKAlphaSel.Constant3_4: alpha = "0.75"; break;
+                                    case TevKAlphaSel.Constant5_8: alpha = "0.625"; break;
+                                    case TevKAlphaSel.Constant1_2: alpha = "0.5"; break;
+                                    case TevKAlphaSel.Constant3_8: alpha = "0.375"; break;
+                                    case TevKAlphaSel.Constant1_4: alpha = "0.25"; break;
+                                    case TevKAlphaSel.Constant1_8: alpha = "0.125"; break;
+                                    default: alpha = "1.0"; break;
                                 }
-
                             }
-                            else if ((byte)stage.AlphaConstantSel < 0x10)
+                            else if (asel < 0x10)
                             {
-                                //warn("getColorOp(): unknown konst %x", konst);
-                                //return "ERROR";
-                                color = "1.0";
+                                alpha = "1.0";
                             }
                             else
                             {
-                                string[] v1 = { "color_consts0", "color_consts1", "color_consts2", "color_consts3" };
-                                string[] v2 = { ".r", ".g", ".b", ".a" };
+                                int idx1 = (asel - 0x10) % 4;
+                                int idx2 = (asel - 0x10) / 4;
 
-                                alpha = v1[((byte)stage.AlphaConstantSel - 0x10) % 4] + v2[((byte)stage.AlphaConstantSel - 0x10) / 4];
+                                idx1 = Safe(idx1, vKAlpha1.Length, 0);
+                                idx2 = Safe(idx2, vKAlpha2.Length, 0);
+
+                                alpha = vKAlpha1[idx1] + vKAlpha2[idx2];
                             }
+
                             frag_ss.AppendFormat("color_constant = vec4({0}, {1});\n", color, alpha);
 
-
+                            // ---------------------------
+                            // Stage combine (safe)
+                            // ---------------------------
                             frag_ss.AppendLine("{");
                             {
+                                int cA = Safe((int)(byte)stage.ColorA, color_inputs.Length, ciFallback);
+                                int aA = Safe((int)(byte)stage.AlphaA, alpha_inputs.Length, aiFallback);
+                                int cB = Safe((int)(byte)stage.ColorB, color_inputs.Length, ciFallback);
+                                int aB = Safe((int)(byte)stage.AlphaB, alpha_inputs.Length, aiFallback);
+                                int cC = Safe((int)(byte)stage.ColorC, color_inputs.Length, ciFallback);
+                                int aC = Safe((int)(byte)stage.AlphaC, alpha_inputs.Length, aiFallback);
+                                int cD = Safe((int)(byte)stage.ColorD, color_inputs.Length, ciFallback);
+                                int aD = Safe((int)(byte)stage.AlphaD, alpha_inputs.Length, aiFallback);
 
-                                // all 4 inputs
-                                frag_ss.AppendFormat("vec4 a = vec4({0}, {1});\n", color_inputs[(byte)stage.ColorA], alpha_inputs[(byte)stage.AlphaA]);
-                                frag_ss.AppendFormat("vec4 b = vec4({0}, {1});\n", color_inputs[(byte)stage.ColorB], alpha_inputs[(byte)stage.AlphaB]);
-                                frag_ss.AppendFormat("vec4 c = vec4({0}, {1});\n", color_inputs[(byte)stage.ColorC], alpha_inputs[(byte)stage.AlphaC]);
-                                frag_ss.AppendFormat("vec4 d = vec4({0}, {1});\n", color_inputs[(byte)stage.ColorD], alpha_inputs[(byte)stage.AlphaD]);
+                                int outC = Safe((int)(byte)stage.ColorRegID, output_registers.Length, regFallback);
+                                int outA = Safe((int)(byte)stage.AlphaRegID, output_registers.Length, regFallback);
 
+                                int cb = Safe((int)(byte)stage.ColorBias, bias.Length, 0);
+                                int cs = Safe((int)(byte)stage.ColorScale, scale.Length, 0);
+                                int ab = Safe((int)(byte)stage.AlphaBias, bias.Length, 0);
+                                int aS = Safe((int)(byte)stage.AlphaScale, scale.Length, 0);
 
-                                // TODO: could eliminate this result variable
+                                frag_ss.AppendFormat("vec4 a = vec4({0}, {1});\n", color_inputs[cA], alpha_inputs[aA]);
+                                frag_ss.AppendFormat("vec4 b = vec4({0}, {1});\n", color_inputs[cB], alpha_inputs[aB]);
+                                frag_ss.AppendFormat("vec4 c = vec4({0}, {1});\n", color_inputs[cC], alpha_inputs[aC]);
+                                frag_ss.AppendFormat("vec4 d = vec4({0}, {1});\n", color_inputs[cD], alpha_inputs[aD]);
+
                                 frag_ss.AppendLine("vec4 result;");
 
-                                if ((byte)stage.ColorOp != (byte)stage.AlphaOp)
+                                byte colorOp = (byte)stage.ColorOp;
+                                byte alphaOp = (byte)stage.AlphaOp;
+
+                                // If write_tevop internally indexes lookup tables, you *may* need to clamp these too.
+                                // For now we keep behavior the same and just prevent the obvious array index crashes above.
+                                if (colorOp != alphaOp)
                                 {
-                                    write_tevop((byte)stage.ColorOp, ".rgb", ref frag_ss);
-                                    write_tevop((byte)stage.AlphaOp, ".a", ref frag_ss);
-                                }
-                                else
-                                    write_tevop((byte)stage.ColorOp, "", ref frag_ss);
-
-                                string[] bias =
-                            {
-                                "+0",
-                                "+0.5",
-                                "-0.5"
-                            };
-
-                                string[] scale =
-                            {
-                                "*1",
-                                "*2",
-                                "*4",
-                                "*0.5"
-                            };
-
-                                if ((byte)stage.ColorOp < 2)
-                                {
-                                    frag_ss.AppendFormat("{0}.rgb = (result.rgb{1}){2};\n", output_registers[(byte)stage.ColorRegID], bias[(byte)stage.ColorBias], scale[(byte)stage.ColorScale]);
+                                    write_tevop(colorOp, ".rgb", ref frag_ss);
+                                    write_tevop(alphaOp, ".a", ref frag_ss);
                                 }
                                 else
                                 {
-                                    frag_ss.AppendFormat("{0}.rgb = result.rgb;\n", output_registers[(byte)stage.ColorRegID]);
+                                    write_tevop(colorOp, "", ref frag_ss);
                                 }
 
-                                if ((byte)stage.AlphaOp < 2)
-                                {
-                                    frag_ss.AppendFormat("{0}.a = (result.a{1}){2};\n", output_registers[(byte)stage.AlphaRegID], bias[(byte)stage.AlphaBias], scale[(byte)stage.AlphaScale]);
-                                }
+                                if (colorOp < 2)
+                                    frag_ss.AppendFormat("{0}.rgb = (result.rgb{1}){2};\n", output_registers[outC], bias[cb], scale[cs]);
                                 else
-                                {
-                                    frag_ss.AppendFormat("{0}.a = result.a;\n", output_registers[(byte)stage.AlphaRegID]);
-                                }
+                                    frag_ss.AppendFormat("{0}.rgb = result.rgb;\n", output_registers[outC]);
 
-                                if (stage.ColorClamp && (byte)stage.ColorOp < 2)
-                                {
-                                    frag_ss.AppendFormat("{0}.rgb = clamp({0}.rgb,vec3(0.0, 0.0, 0.0),vec3(1.0, 1.0, 1.0));\n", output_registers[(byte)stage.ColorRegID]);
-                                }
-                                if (stage.AlphaClamp && (byte)stage.AlphaOp < 2)
-                                {
-                                    frag_ss.AppendFormat("{0}.a = clamp({0}.a, 0.0, 1.0);\n", output_registers[(byte)stage.AlphaRegID]);
-                                }
+                                if (alphaOp < 2)
+                                    frag_ss.AppendFormat("{0}.a = (result.a{1}){2};\n", output_registers[outA], bias[ab], scale[aS]);
+                                else
+                                    frag_ss.AppendFormat("{0}.a = result.a;\n", output_registers[outA]);
+
+                                if (stage.ColorClamp && colorOp < 2)
+                                    frag_ss.AppendFormat("{0}.rgb = clamp({0}.rgb, vec3(0.0), vec3(1.0));\n", output_registers[outC]);
+
+                                if (stage.AlphaClamp && alphaOp < 2)
+                                    frag_ss.AppendFormat("{0}.a = clamp({0}.a, 0.0, 1.0);\n", output_registers[outA]);
                             }
                             frag_ss.AppendLine("}");
                         }
-
                     }
                     else
                     {
-                        //frag_ss += "vec4 color = texture2D(textures0,gl_TexCoord[0].st);";
-                        //frag_ss += "gl_FragColor = mix(color,color_registers1,color_registers0);";
-                        //frag_ss += "gl_FragColor = color + color_registers0;";
+                        // Fallback path (also safe-clamped)
                         for (int i = 0; i < 1; i++)
                         {
-                            // current texture color
-                            // 0xff is a common value for a disabled texture
                             if (i < sampler_count)
                             {
                                 frag_ss.AppendFormat("if (hasTexture{0} == 1)\n", i);
@@ -614,29 +661,37 @@ namespace LayoutBXLYT.Revolution
                                 frag_ss.AppendLine("else");
                                 frag_ss.AppendLine("    color_texture = vec4(1);");
                             }
+                            else
+                            {
+                                frag_ss.AppendLine("color_texture = vec4(1);");
+                            }
 
                             frag_ss.AppendLine("{");
                             {
-                                // all 4 inputs
-                                frag_ss.AppendFormat("vec4 a = vec4({0}, {1});\n", color_inputs[2], alpha_inputs[1]);
-                                frag_ss.AppendFormat("vec4 b = vec4({0}, {1});\n", color_inputs[4], alpha_inputs[2]);
-                                frag_ss.AppendFormat("vec4 c = vec4({0}, {1});\n", color_inputs[8], alpha_inputs[4]);
-                                frag_ss.AppendFormat("vec4 d = vec4({0}, {1});\n", color_inputs[0xf], alpha_inputs[0x7]);
+                                int cA = Safe(2,  color_inputs.Length, ciFallback);
+                                int aA = Safe(1,  alpha_inputs.Length, aiFallback);
+                                int cB = Safe(4,  color_inputs.Length, ciFallback);
+                                int aB = Safe(2,  alpha_inputs.Length, aiFallback);
+                                int cC = Safe(8,  color_inputs.Length, ciFallback);
+                                int aC = Safe(4,  alpha_inputs.Length, aiFallback);
+                                int cD = Safe(0xF,color_inputs.Length, ciFallback);
+                                int aD = Safe(0x7,alpha_inputs.Length, aiFallback);
 
+                                frag_ss.AppendFormat("vec4 a = vec4({0}, {1});\n", color_inputs[cA], alpha_inputs[aA]);
+                                frag_ss.AppendFormat("vec4 b = vec4({0}, {1});\n", color_inputs[cB], alpha_inputs[aB]);
+                                frag_ss.AppendFormat("vec4 c = vec4({0}, {1});\n", color_inputs[cC], alpha_inputs[aC]);
+                                frag_ss.AppendFormat("vec4 d = vec4({0}, {1});\n", color_inputs[cD], alpha_inputs[aD]);
 
-                                // TODO: could eliminate this result variable
                                 frag_ss.AppendLine("vec4 result;");
-
                                 write_tevop(0, "", ref frag_ss);
 
-                                // output register
-                                frag_ss.AppendFormat("{0}.rgb = result.rgb;\n", output_registers[0]);
-                                frag_ss.AppendFormat("{0}.a = result.a;\n", output_registers[0]);
+                                int out0 = Safe(0, output_registers.Length, regFallback);
+                                frag_ss.AppendFormat("{0}.rgb = result.rgb;\n", output_registers[out0]);
+                                frag_ss.AppendFormat("{0}.a = result.a;\n", output_registers[out0]);
                             }
                             frag_ss.AppendLine("}");
 
-                            // current texture color
-                            // 0xff is a common value for a disabled texture
+                            // Second simple pass
                             if (i < sampler_count)
                             {
                                 frag_ss.AppendFormat("if (hasTexture{0} == 1)\n", i);
@@ -644,29 +699,38 @@ namespace LayoutBXLYT.Revolution
                                 frag_ss.AppendLine("else");
                                 frag_ss.AppendLine("    color_texture = vec4(1);");
                             }
+                            else
+                            {
+                                frag_ss.AppendLine("color_texture = vec4(1);");
+                            }
 
                             frag_ss.AppendLine("{");
                             {
-                                // all 4 inputs
-                                frag_ss.AppendFormat("vec4 a = vec4({0}, {1});\n", color_inputs[0xf], alpha_inputs[0x7]);
-                                frag_ss.AppendFormat("vec4 b = vec4({0}, {1});\n", color_inputs[0], alpha_inputs[0]);
-                                frag_ss.AppendFormat("vec4 c = vec4({0}, {1});\n", color_inputs[10], alpha_inputs[5]);
-                                frag_ss.AppendFormat("vec4 d = vec4({0}, {1});\n", color_inputs[0xf], alpha_inputs[0x7]);
+                                int cA = Safe(0xF, color_inputs.Length, ciFallback);
+                                int aA = Safe(0x7, alpha_inputs.Length, aiFallback);
+                                int cB = Safe(0,   color_inputs.Length, ciFallback);
+                                int aB = Safe(0,   alpha_inputs.Length, aiFallback);
+                                int cC = Safe(10,  color_inputs.Length, ciFallback);
+                                int aC = Safe(5,   alpha_inputs.Length, aiFallback);
+                                int cD = Safe(0xF, color_inputs.Length, ciFallback);
+                                int aD = Safe(0x7, alpha_inputs.Length, aiFallback);
 
+                                frag_ss.AppendFormat("vec4 a = vec4({0}, {1});\n", color_inputs[cA], alpha_inputs[aA]);
+                                frag_ss.AppendFormat("vec4 b = vec4({0}, {1});\n", color_inputs[cB], alpha_inputs[aB]);
+                                frag_ss.AppendFormat("vec4 c = vec4({0}, {1});\n", color_inputs[cC], alpha_inputs[aC]);
+                                frag_ss.AppendFormat("vec4 d = vec4({0}, {1});\n", color_inputs[cD], alpha_inputs[aD]);
 
-
-                                // TODO: could eliminate this result variable
                                 frag_ss.AppendLine("vec4 result;");
-
                                 write_tevop(0, "", ref frag_ss);
 
-                                // output register
-                                frag_ss.AppendFormat("{0}.rgb = result.rgb;\n", output_registers[0]);
-                                frag_ss.AppendFormat("{0}.a = result.a;\n", output_registers[0]);
+                                int out0 = Safe(0, output_registers.Length, regFallback);
+                                frag_ss.AppendFormat("{0}.rgb = result.rgb;\n", output_registers[out0]);
+                                frag_ss.AppendFormat("{0}.a = result.a;\n", output_registers[out0]);
                             }
                             frag_ss.AppendLine("}");
                         }
                     }
+
                     frag_ss.AppendLine("gl_FragColor = color_previous;");
                 }
             }
@@ -765,14 +829,18 @@ namespace LayoutBXLYT.Revolution
         }
         private void write_tevop(byte tevop, String swiz, ref StringBuilder frag_ss)
         {
-            String condition_end = (" ? c : vec4(0.0))");
-            condition_end += swiz;
+            // Note:
+            // - This function only emits GLSL text.
+            // - It MUST NOT pop any UI dialogs (it gets called a lot).
+            // - If we see unknown ops, we fall back to a safe expression so the UI can still render.
 
-            // d is added with every op except SUB
+            string condition_end = (" ? c : vec4(0.0))") + swiz;
+
+            // d is added with every op except SUB (matches your original intent)
             if (tevop < 14)
                 frag_ss.AppendFormat("result{0} = d{0} {1} ", swiz, (tevop == 1 ? '-' : '+'));
 
-            String compare_op = ((tevop & 1) != 0) ? "==" : ">";
+            string compare_op = ((tevop & 1) != 0) ? "==" : ">";
 
             switch (tevop)
             {
@@ -784,62 +852,57 @@ namespace LayoutBXLYT.Revolution
                 case 8: // COMP_R8_GT
                 case 9: // COMP_R8_EQ
                     frag_ss.AppendFormat("((a.r {0} b.r){1}", compare_op, condition_end);
-                    System.Windows.Forms.MessageBox.Show(tevop.ToString());
                     break;
 
                 case 10: // COMP_GR16_GT
                 case 11: // COMP_GR16_EQ
                     frag_ss.AppendFormat("((dot(a.gr, comp16) {0} dot(b.gr, comp16)){1}", compare_op, condition_end);
-                    System.Windows.Forms.MessageBox.Show(tevop.ToString());
                     break;
 
                 case 12: // COMP_BGR24_GT
                 case 13: // COMP_BGR24_EQ
                     frag_ss.AppendFormat("((dot(a.bgr, comp24) {0} dot(b.bgr, comp24)){1}", compare_op, condition_end);
-                    System.Windows.Forms.MessageBox.Show(tevop.ToString());
                     break;
 
-                // TODO:
                 case 14: // COMP_RGB8_GT
                 case 15: // COMP_RGB8_EQ
-                         //frag_ss += "  if(a" + swiz+ compare_op + "b" + swiz + ")\n    " + "result" + swiz + " = " + "c" + swiz + ";\n"
-                         //	+ "  else\n    " + "result" + swiz + " = " + "vec4(0.0)" + swiz;
+                    // Your original behavior: do per-channel compare and add d.
                     if (swiz == ".rgb")
                     {
-                        frag_ss.AppendFormat("result.r = d.r + ");
-                        frag_ss.AppendFormat("((a.r {0} b.r)" + " ? c.r : vec4(0.0).r);\n", compare_op);
-                        frag_ss.AppendFormat("result.g = d.g + ");
-                        frag_ss.AppendFormat("((a.g {0} b.g)" + " ? c.g : vec4(0.0).g);\n", compare_op);
-                        frag_ss.AppendFormat("result.b = d.b + ");
-                        frag_ss.AppendFormat("((a.b {0} b.b)" + " ? c.b : vec4(0.0).b);\n", compare_op);
+                        frag_ss.AppendFormat("result.r = d.r + ((a.r {0} b.r) ? c.r : 0.0);\n", compare_op);
+                        frag_ss.AppendFormat("result.g = d.g + ((a.g {0} b.g) ? c.g : 0.0);\n", compare_op);
+                        frag_ss.AppendFormat("result.b = d.b + ((a.b {0} b.b) ? c.b : 0.0);\n", compare_op);
+                        return; // we already emitted complete statements + newlines
                     }
                     else if (swiz == ".a")
                     {
-                        frag_ss.AppendFormat("result.a = d.a + ");
-                        frag_ss.AppendFormat("((a.a {0} b.a)" + " ? c.a : vec4(0.0).a);", compare_op);
+                        frag_ss.AppendFormat("result.a = d.a + ((a.a {0} b.a) ? c.a : 0.0)", compare_op);
                     }
                     else
                     {
-                        frag_ss.AppendFormat("result.r = d.r + ");
-                        frag_ss.AppendFormat("((a.r {0} b.r)" + " ? c.r : vec4(0.0).r);\n", compare_op);
-                        frag_ss.AppendFormat("result.g = d.g + ");
-                        frag_ss.AppendFormat("((a.g {0} b.g)" + " ? c.g : vec4(0.0).g);\n", compare_op);
-                        frag_ss.AppendFormat("result.b = d.b + ");
-                        frag_ss.AppendFormat("((a.b {0} b.b)" + " ? c.b : vec4(0.0).b);\n", compare_op);
-                        frag_ss.AppendFormat("result.a = d.a + ");
-                        frag_ss.AppendFormat("((a.a {0} b.a)" + " ? c.a : vec4(0.0).a);", compare_op);
+                        frag_ss.AppendFormat("result.r = d.r + ((a.r {0} b.r) ? c.r : 0.0);\n", compare_op);
+                        frag_ss.AppendFormat("result.g = d.g + ((a.g {0} b.g) ? c.g : 0.0);\n", compare_op);
+                        frag_ss.AppendFormat("result.b = d.b + ((a.b {0} b.b) ? c.b : 0.0);\n", compare_op);
+                        frag_ss.AppendFormat("result.a = d.a + ((a.a {0} b.a) ? c.a : 0.0)", compare_op);
                     }
-                    //frag_ss += "(a.rgb " + compare_op + " b.rgb)" + condition_end;
-                    //frag_ss += "(a.rgb " + compare_op + " b.rgb)" + condition_end;
-                    //frag_ss += "(a.rgb " + compare_op + " b.rgb)" + condition_end;
                     break;
 
                 default:
-                    frag_ss.AppendFormat("mix(a{0}, b{0}, c{0})", swiz);
-                    System.Windows.Forms.MessageBox.Show(tevop.ToString());
-                    //std::cout << "Unsupported tevop!! " << (int)tevop << '\n';
+                    // Unknown/unsupported tevop:
+                    // fall back to a safe blend (prevents crashes, lets you still see the layout)
+                    // We *also* avoid depending on d/+/- formatting above by only using tevop >= 14 here
+                    // (since tevop < 14 already emitted "result = d +/- ").
+                    if (tevop >= 14)
+                    {
+                        frag_ss.AppendFormat("result{0} = mix(a{0}, b{0}, c{0})", swiz, swiz, swiz);
+                    }
+                    else
+                    {
+                        frag_ss.AppendFormat("mix(a{0}, b{0}, c{0})", swiz);
+                    }
                     break;
             }
+
             frag_ss.AppendLine(";");
         }
         public int program = 0, fragment_shader = 0, vertex_shader = 0;
