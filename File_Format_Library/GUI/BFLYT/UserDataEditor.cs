@@ -26,6 +26,7 @@ namespace LayoutBXLYT
 
         public void Reset()
         {
+            activePane = null;
             ActiveUserData = new UserData();
             SelectedEntry = null;
             listViewCustom1.Items.Clear();
@@ -34,14 +35,27 @@ namespace LayoutBXLYT
         public void LoadUserData(BasePane pane, UserData UserData)
         {
             activePane = pane;
-            if (UserData != null)
-            {
-                listViewCustom1.Items.Clear();
+            listViewCustom1.Items.Clear();
+            ActiveUserData = UserData;
+            SelectedEntry = null;
 
-                ActiveUserData = UserData;
-                foreach (var item in ActiveUserData.Entries)
-                    LoadUserData(item);
-            }
+            if (ActiveUserData == null)
+                return;
+
+            foreach (var item in ActiveUserData.Entries)
+                LoadUserData(item);
+        }
+
+        private void EnsureUserDataAttached()
+        {
+            if (activePane is IUserDataContainer container)
+                container.UserData = ActiveUserData;
+        }
+
+        private void MarkLayoutDirty()
+        {
+            if (activePane?.LayoutFile?.FileInfo != null)
+                activePane.LayoutFile.FileInfo.CanSave = true;
         }
 
         private void LoadUserData(UserDataEntry item)
@@ -89,7 +103,8 @@ namespace LayoutBXLYT
                 btnEdit.Enabled = true;
                 btnRemove.Enabled = true;
 
-                SelectedEntry = ActiveUserData.Entries[listViewCustom1.SelectedIndices[0]];
+                if (ActiveUserData != null && listViewCustom1.SelectedIndices[0] < ActiveUserData.Entries.Count)
+                    SelectedEntry = ActiveUserData.Entries[listViewCustom1.SelectedIndices[0]];
             }
             else
             {
@@ -110,6 +125,11 @@ namespace LayoutBXLYT
         {
             if (activePane == null) return;
 
+            if (ActiveUserData == null)
+                ActiveUserData = activePane.CreateUserData();
+
+            EnsureUserDataAttached();
+
             UserDataEntry userDataNew = ActiveUserData.CreateUserData();
             userDataNew.SetValue(new int[0]);
             SelectedEntry = userDataNew;
@@ -119,6 +139,7 @@ namespace LayoutBXLYT
                 ActiveUserData.Edited = true;
                 ActiveUserData.Entries.Add(userDataNew);
                 LoadUserData(userDataNew);
+                MarkLayoutDirty();
             }
         }
         private bool EditData()
@@ -136,7 +157,7 @@ namespace LayoutBXLYT
                             parser.LoadValues(SelectedEntry.GetString());
                         break;
                     case UserDataType.Float:
-                        if (SelectedEntry.GetString() != null)
+                        if (SelectedEntry.GetFloats() != null)
                             parser.LoadValues(SelectedEntry.GetFloats());
                         break;
                     case UserDataType.Int:
@@ -159,8 +180,11 @@ namespace LayoutBXLYT
                         ActiveUserData = activePane.CreateUserData();
                     }
 
+                    EnsureUserDataAttached();
+
                     ActiveUserData.Edited = true;
                     LoadUserData(activePane, ActiveUserData);
+                    MarkLayoutDirty();
                     return true;
                 }
             }
@@ -177,6 +201,7 @@ namespace LayoutBXLYT
                 if (ActiveUserData != null) {
                     ActiveUserData.Entries.RemoveAt(index);
                     ActiveUserData.Edited = true;
+                    MarkLayoutDirty();
                 }
             }
         }

@@ -43,6 +43,12 @@ namespace LayoutBXLYT
         private bool Loaded = false;
         private int TexCoordinateCount = 1;
 
+        private static void MarkMaterialEdited(BxlytMaterial material)
+        {
+            if (material is LayoutBXLYT.Revolution.Material revMaterial)
+                revMaterial.MarkEdited();
+        }
+
         public void LoadMaterial(BxlytMaterial material, PaneEditor paneEditor, 
             Dictionary<string, STGenericTexture> textures, int numTextureCoordinates = 1)
         {
@@ -309,13 +315,17 @@ namespace LayoutBXLYT
             {
                 string newTexture = selector.GetSelectedTexture();
                 ActiveMaterial.AddTexture(newTexture);
+                MarkMaterialEdited(ActiveMaterial);
 
                 //Apply to all selected panes
                 foreach (BasePane pane in ParentEditor.SelectedPanes)
                 {
                     var mat = pane.TryGetActiveMaterial();
                     if (mat != null && mat != ActiveMaterial && mat.TextureMaps?.Length != 3)
+                    {
                         mat.AddTexture(newTexture);
+                        MarkMaterialEdited(mat);
+                    }
                 }
 
                 ReloadTexture();
@@ -341,6 +351,7 @@ namespace LayoutBXLYT
                     string newTexture = selector.GetSelectedTexture();
                     texMap.ID = (short)ActiveMaterial.ParentLayout.AddTexture(newTexture);
                     texMap.Name = newTexture;
+                    MarkMaterialEdited(ActiveMaterial);
                     ReloadTexture();
                     ParentEditor.PropertyChanged?.Invoke(sender, e);
 
@@ -351,9 +362,23 @@ namespace LayoutBXLYT
                         if (mat != null && mat != ActiveMaterial)
                         {
                             if (mat.TextureMaps?.Length > SelectedIndex)
-                                mat.TextureMaps[SelectedIndex] = texMap;
+                            {
+                                mat.TextureMaps[SelectedIndex] = new BxlytTextureRef()
+                                {
+                                    ID = texMap.ID,
+                                    Name = texMap.Name,
+                                    WrapModeU = texMap.WrapModeU,
+                                    WrapModeV = texMap.WrapModeV,
+                                    MinFilterMode = texMap.MinFilterMode,
+                                    MaxFilterMode = texMap.MaxFilterMode,
+                                };
+                                MarkMaterialEdited(mat);
+                            }
                             else
+                            {
                                 mat.AddTexture(newTexture);
+                                MarkMaterialEdited(mat);
+                            }
                         }
                     }
                 }
@@ -365,13 +390,17 @@ namespace LayoutBXLYT
             if (ActiveMaterial.TextureMaps.Length > SelectedIndex && SelectedIndex >= 0)
             {
                 ActiveMaterial.RemoveTexture(SelectedIndex);
+                MarkMaterialEdited(ActiveMaterial);
 
                 //Apply to all selected panes
                 foreach (BasePane pane in ParentEditor.SelectedPanes)
                 {
                     var mat = pane.TryGetActiveMaterial();
                     if (mat != null && mat != ActiveMaterial && mat.TextureMaps?.Length > SelectedIndex)
+                    {
                         mat.RemoveTexture(SelectedIndex);
+                        MarkMaterialEdited(mat);
+                    }
                 }
             }
 
@@ -398,7 +427,47 @@ namespace LayoutBXLYT
 
             if (ActiveMaterial.TextureTransforms.Length > SelectedIndex && SelectedIndex != -1)
             {
+                var oldTransform = ActiveMaterial.TextureTransforms[SelectedIndex];
+                var oldScale = oldTransform.Scale;
+                var oldTranslate = oldTransform.Translate;
+                var oldRotate = oldTransform.Rotate;
+
                 UpdateTransform(ActiveMaterial.TextureTransforms[SelectedIndex]);
+                MarkMaterialEdited(ActiveMaterial);
+
+                bool relative = Runtime.LayoutEditor.MulticlickBehavior == Runtime.LayoutEditor.MulticlickBehaviorMode.Relative;
+                var newTransform = ActiveMaterial.TextureTransforms[SelectedIndex];
+                float dScaleX = newTransform.Scale.X - oldScale.X;
+                float dScaleY = newTransform.Scale.Y - oldScale.Y;
+                float dTranslateX = newTransform.Translate.X - oldTranslate.X;
+                float dTranslateY = newTransform.Translate.Y - oldTranslate.Y;
+                float dRotate = newTransform.Rotate - oldRotate;
+
+                foreach (BasePane pane in ParentEditor.SelectedPanes)
+                {
+                    var mat = pane.TryGetActiveMaterial();
+                    if (mat == null || mat == ActiveMaterial || SelectedIndex < 0)
+                        continue;
+
+                    if (mat.TextureTransforms == null || mat.TextureTransforms.Length <= SelectedIndex)
+                        continue;
+
+                    var target = mat.TextureTransforms[SelectedIndex];
+                    if (relative)
+                    {
+                        target.Scale = new Syroot.Maths.Vector2F(target.Scale.X + dScaleX, target.Scale.Y + dScaleY);
+                        target.Translate = new Syroot.Maths.Vector2F(target.Translate.X + dTranslateX, target.Translate.Y + dTranslateY);
+                        target.Rotate += dRotate;
+                    }
+                    else
+                    {
+                        target.Scale = new Syroot.Maths.Vector2F(newTransform.Scale.X, newTransform.Scale.Y);
+                        target.Translate = new Syroot.Maths.Vector2F(newTransform.Translate.X, newTransform.Translate.Y);
+                        target.Rotate = newTransform.Rotate;
+                    }
+
+                    MarkMaterialEdited(mat);
+                }
             }
             else if (SelectedIndex != -1)
             {
@@ -429,6 +498,23 @@ namespace LayoutBXLYT
                 ActiveMaterial.TextureMaps[SelectedIndex].WrapModeV = (WrapMode)wrapModeVCB.SelectedValue;
                 ActiveMaterial.TextureMaps[SelectedIndex].MaxFilterMode = (FilterMode)expandCB.SelectedValue;
                 ActiveMaterial.TextureMaps[SelectedIndex].MinFilterMode = (FilterMode)shrinkCB.SelectedValue;
+                MarkMaterialEdited(ActiveMaterial);
+
+                foreach (BasePane pane in ParentEditor.SelectedPanes)
+                {
+                    var mat = pane.TryGetActiveMaterial();
+                    if (mat == null || mat == ActiveMaterial || SelectedIndex < 0)
+                        continue;
+
+                    if (mat.TextureMaps == null || mat.TextureMaps.Length <= SelectedIndex)
+                        continue;
+
+                    mat.TextureMaps[SelectedIndex].WrapModeU = (WrapMode)wrapModeUCB.SelectedValue;
+                    mat.TextureMaps[SelectedIndex].WrapModeV = (WrapMode)wrapModeVCB.SelectedValue;
+                    mat.TextureMaps[SelectedIndex].MaxFilterMode = (FilterMode)expandCB.SelectedValue;
+                    mat.TextureMaps[SelectedIndex].MinFilterMode = (FilterMode)shrinkCB.SelectedValue;
+                    MarkMaterialEdited(mat);
+                }
 
                 Console.WriteLine("Updating wrap mode! " + ActiveMaterial.TextureMaps[SelectedIndex].WrapModeU);
             }
@@ -445,6 +531,27 @@ namespace LayoutBXLYT
                 }
                 else
                     projectionParamsPanel.Visible = false;
+
+                if (ActiveMaterial.TexCoordGens?.Length > SelectedIndex && SelectedIndex >= 0)
+                {
+                    ActiveMaterial.TexCoordGens[SelectedIndex].Source = (TexGenType)type;
+                    MarkMaterialEdited(ActiveMaterial);
+
+                    foreach (BasePane pane in ParentEditor.SelectedPanes)
+                    {
+                        var mat = pane.TryGetActiveMaterial();
+                        if (mat == null || mat == ActiveMaterial || SelectedIndex < 0)
+                            continue;
+
+                        if (mat.TexCoordGens == null || mat.TexCoordGens.Length <= SelectedIndex)
+                            continue;
+
+                        mat.TexCoordGens[SelectedIndex].Source = (TexGenType)type;
+                        MarkMaterialEdited(mat);
+                    }
+
+                    ParentEditor.PropertyChanged?.Invoke(sender, e);
+                }
             }
         }
     }

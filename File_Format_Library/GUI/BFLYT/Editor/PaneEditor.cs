@@ -94,7 +94,15 @@ namespace LayoutBXLYT
 
         public List<BxlanHeader> GetAnimations()
         {
-            return ParentEditor.AnimationFiles;
+            if (ParentEditor == null)
+                return new List<BxlanHeader>();
+
+            return ParentEditor.GetAllAnimationHeaders();
+        }
+
+        public string GetActivePaneName()
+        {
+            return ActivePane?.Name;
         }
 
         public void LoadMaterial(BxlytMaterial material, LayoutEditor parentEditor)
@@ -456,6 +464,262 @@ namespace LayoutBXLYT
         private void stToolStrip1_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
         {
 
+        }
+
+        public bool IsAnimationEditMode
+        {
+            get { return Runtime.LayoutEditor.AnimationEditMode; }
+        }
+
+        public float GetCurrentAnimationFrame()
+        {
+            if (ParentEditor == null)
+                return 0;
+            return ParentEditor.GetCurrentAnimationFrame();
+        }
+
+        private BxlanHeader GetActiveAnimation()
+        {
+            return ParentEditor?.GetActiveAnimation();
+        }
+
+        private KeyFrame FindOrCreateKeyFrame(BxlanPaiTagEntry entry, float frame)
+        {
+            const float epsilon = 0.001f;
+            var key = entry.KeyFrames.FirstOrDefault(x => Math.Abs(x.Frame - frame) <= epsilon);
+            if (key != null)
+                return key;
+
+            key = new KeyFrame(frame);
+            entry.KeyFrames.Add(key);
+            entry.KeyFrames = entry.KeyFrames.OrderBy(x => x.Frame).ToList();
+            return key;
+        }
+
+        private BxlanPaiTagEntry GetOrCreateColorEntry(BxlanPaiTag tag, byte target, bool isRevMaterial)
+        {
+            var entry = tag.Entries.FirstOrDefault(x => x.AnimationTarget == target);
+            if (entry != null)
+                return entry;
+
+            if (tag.Tag.EndsWith("LVC"))
+                entry = new LVCTagEntry(target, (byte)CurveType.Step);
+            else if (tag.Tag.StartsWith("R") && tag.Tag.EndsWith("LMC") && isRevMaterial)
+                entry = new RevLMCTagEntry(target, (byte)CurveType.Step);
+            else if (tag.Tag.EndsWith("LMC"))
+                entry = new LMCTagEntry(target, (byte)CurveType.Step);
+            else
+                entry = new BxlanPaiTagEntry(target, (byte)CurveType.Step);
+
+            tag.Entries.Add(entry);
+            return entry;
+        }
+
+        private bool IsRevLmcTag(BxlanPaiTag tag)
+        {
+            return tag?.Tag != null && tag.Tag.StartsWith("R") && tag.Tag.EndsWith("LMC");
+        }
+
+        private BxlanPaiTag FindColorTag(BxlanPaiEntry paiEntry, string suffix, byte? target = null, bool? isRevMaterial = null)
+        {
+            if (paiEntry?.Tags == null)
+                return null;
+
+            var tags = paiEntry.Tags
+                .Where(x => x.Tag != null && x.Tag.EndsWith(suffix))
+                .ToList();
+
+            if (tags.Count == 0)
+                return null;
+
+            if (suffix == "LMC" && isRevMaterial.HasValue)
+                tags = tags.Where(x => IsRevLmcTag(x) == isRevMaterial.Value).ToList();
+
+            if (tags.Count == 0)
+                return null;
+
+            if (target.HasValue)
+            {
+                var targetTag = tags.FirstOrDefault(x => x.Entries != null && x.Entries.Any(e => e.AnimationTarget == target.Value));
+                if (targetTag != null)
+                    return targetTag;
+            }
+
+            return tags.FirstOrDefault();
+        }
+
+        public bool IsPaneVertexColorKeyed(BasePane pane, LVCTarget target)
+        {
+            var header = GetActiveAnimation();
+            if (header == null || pane == null)
+                return false;
+
+            float frame = GetCurrentAnimationFrame();
+            var paiEntry = header.AnimationInfo.Entries.FirstOrDefault(x =>
+                x.Target == AnimationTarget.Pane && x.Name == pane.Name);
+            if (paiEntry == null)
+                return false;
+
+            var lvcTag = FindColorTag(paiEntry, "LVC");
+            if (lvcTag == null)
+                return false;
+
+            var entry = lvcTag.Entries.FirstOrDefault(x => x.AnimationTarget == (byte)target);
+            if (entry == null)
+                return false;
+
+            return entry.KeyFrames.Any(x => Math.Abs(x.Frame - frame) <= 0.001f);
+        }
+
+        public bool IsPaneVertexColorAnimated(BasePane pane, LVCTarget target)
+        {
+            // Prefer runtime animation state, which mirrors how transform controls determine animated channels.
+            if (pane != null && pane.animController != null && pane.animController.PaneVertexColors.ContainsKey(target))
+                return true;
+
+            var header = GetActiveAnimation();
+            if (header == null || pane == null)
+                return false;
+
+            var paiEntry = header.AnimationInfo.Entries.FirstOrDefault(x =>
+                x.Target == AnimationTarget.Pane && x.Name == pane.Name);
+            if (paiEntry == null)
+                return false;
+
+            var lvcTag = FindColorTag(paiEntry, "LVC");
+            if (lvcTag == null)
+                return false;
+
+            var entry = lvcTag.Entries.FirstOrDefault(x => x.AnimationTarget == (byte)target);
+            return entry != null && entry.KeyFrames.Count > 0;
+        }
+
+        public void ApplyPaneVertexColorKey(BasePane pane, LVCTarget target, float value)
+        {
+            if (!IsAnimationEditMode)
+                return;
+
+            var header = GetActiveAnimation();
+            if (header == null || pane == null)
+                return;
+
+            var paiEntry = header.AnimationInfo.Entries.FirstOrDefault(x =>
+                x.Target == AnimationTarget.Pane && x.Name == pane.Name);
+            if (paiEntry == null)
+                return;
+
+            var lvcTag = FindColorTag(paiEntry, "LVC");
+            if (lvcTag == null)
+                return;
+
+            var entry = GetOrCreateColorEntry(lvcTag, (byte)target, false);
+            var key = FindOrCreateKeyFrame(entry, GetCurrentAnimationFrame());
+            key.Value = value;
+
+            header.ToGenericAnimation(ParentEditor.ActiveLayout);
+        }
+
+        public bool IsMaterialColorKeyed(BxlytMaterial material, byte target, bool isRevMaterial)
+        {
+            var header = GetActiveAnimation();
+            if (header == null || material == null)
+                return false;
+
+            float frame = GetCurrentAnimationFrame();
+            var paiEntry = header.AnimationInfo.Entries.FirstOrDefault(x =>
+                x.Target == AnimationTarget.Material && x.Name == material.Name);
+            if (paiEntry == null)
+                return false;
+
+            var lmcTag = FindColorTag(paiEntry, "LMC", target, isRevMaterial);
+            if (lmcTag == null)
+                return false;
+
+            var entry = lmcTag.Entries.FirstOrDefault(x => x.AnimationTarget == target);
+            if (entry == null)
+                return false;
+
+            return entry.KeyFrames.Any(x => Math.Abs(x.Frame - frame) <= 0.001f);
+        }
+
+        public bool IsMaterialColorAnimated(BxlytMaterial material, byte target, bool isRevMaterial)
+        {
+            // Runtime material animation state is the most reliable signal for whether a channel is animated.
+            if (material != null && material.animController != null &&
+                material.animController.MaterialColors.ContainsKey((LMCTarget)target))
+                return true;
+
+            var header = GetActiveAnimation();
+            if (header == null || material == null)
+                return false;
+
+            var paiEntry = header.AnimationInfo.Entries.FirstOrDefault(x =>
+                x.Target == AnimationTarget.Material && x.Name == material.Name);
+            if (paiEntry == null)
+                return false;
+
+            var lmcTag = FindColorTag(paiEntry, "LMC", target, isRevMaterial);
+            if (lmcTag == null)
+                return false;
+
+            var entry = lmcTag.Entries.FirstOrDefault(x => x.AnimationTarget == target);
+            return entry != null && entry.KeyFrames.Count > 0;
+        }
+
+        public void ApplyMaterialColorKey(BxlytMaterial material, byte target, float value, bool isRevMaterial)
+        {
+            if (!IsAnimationEditMode)
+                return;
+
+            var header = GetActiveAnimation();
+            if (header == null || material == null)
+                return;
+
+            var paiEntry = header.AnimationInfo.Entries.FirstOrDefault(x =>
+                x.Target == AnimationTarget.Material && x.Name == material.Name);
+            if (paiEntry == null)
+                return;
+
+            var lmcTag = FindColorTag(paiEntry, "LMC", target, isRevMaterial);
+            if (lmcTag == null)
+                return;
+
+            var entry = GetOrCreateColorEntry(lmcTag, target, isRevMaterial);
+            var key = FindOrCreateKeyFrame(entry, GetCurrentAnimationFrame());
+            key.Value = value;
+
+            header.ToGenericAnimation(ParentEditor.ActiveLayout);
+        }
+
+        public void ApplyMaterialColorKeyAtFrame(BxlanHeader header, string paneName, byte target, float value, bool isRevMaterial, float frame)
+        {
+            if (header == null || string.IsNullOrEmpty(paneName))
+                return;
+
+            var paiEntry = header.AnimationInfo?.Entries?.FirstOrDefault(x =>
+                x.Target == AnimationTarget.Material && x.Name == paneName);
+            if (paiEntry == null)
+                paiEntry = header.AnimationInfo?.Entries?.FirstOrDefault(x => x.Name == paneName);
+            if (paiEntry == null)
+                return;
+
+            var lmcTag = FindColorTag(paiEntry, "LMC", target, isRevMaterial);
+            if (lmcTag == null)
+                return;
+
+            ApplyMaterialColorKeyAtFrame(header, lmcTag, target, value, isRevMaterial, frame);
+        }
+
+        public void ApplyMaterialColorKeyAtFrame(BxlanHeader header, BxlanPaiTag lmcTag, byte target, float value, bool isRevMaterial, float frame)
+        {
+            if (header == null || lmcTag == null)
+                return;
+
+            var entry = GetOrCreateColorEntry(lmcTag, target, isRevMaterial);
+            var key = FindOrCreateKeyFrame(entry, frame);
+            key.Value = value;
+
+            header.ToGenericAnimation(ParentEditor.ActiveLayout);
         }
     }
 }

@@ -39,6 +39,7 @@
             this.searchFormToolStrip = new System.Windows.Forms.ToolStripButton();
             this.stPanel3 = new Toolbox.Library.Forms.STPanel();
             this.activeEditorChkBox = new Toolbox.Library.Forms.STCheckBox();
+            this.enableBackupsChkBox = new Toolbox.Library.Forms.STCheckBox();
             this.searchImgPB = new System.Windows.Forms.PictureBox();
             this.objectEditorMenu = new Toolbox.Library.Forms.STMenuStrip();
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -102,7 +103,7 @@
             this.nodeSizeCB.ButtonColor = System.Drawing.Color.Empty;
             this.nodeSizeCB.FormattingEnabled = true;
             this.nodeSizeCB.IsReadOnly = false;
-            this.nodeSizeCB.Location = new System.Drawing.Point(138, 26);
+            this.nodeSizeCB.Location = new System.Drawing.Point(138, 44);
             this.nodeSizeCB.Name = "nodeSizeCB";
             this.nodeSizeCB.Size = new System.Drawing.Size(144, 21);
             this.nodeSizeCB.TabIndex = 5;
@@ -111,7 +112,7 @@
             // splitContainer1
             // 
             this.splitContainer1.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer1.Location = new System.Drawing.Point(0, 51);
+            this.splitContainer1.Location = new System.Drawing.Point(0, 69);
             this.splitContainer1.Name = "splitContainer1";
             this.splitContainer1.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
@@ -190,12 +191,13 @@
             // stPanel3
             // 
             this.stPanel3.Controls.Add(this.activeEditorChkBox);
+            this.stPanel3.Controls.Add(this.enableBackupsChkBox);
             this.stPanel3.Controls.Add(this.searchImgPB);
             this.stPanel3.Controls.Add(this.objectEditorMenu);
             this.stPanel3.Dock = System.Windows.Forms.DockStyle.Top;
             this.stPanel3.Location = new System.Drawing.Point(0, 0);
             this.stPanel3.Name = "stPanel3";
-            this.stPanel3.Size = new System.Drawing.Size(302, 26);
+            this.stPanel3.Size = new System.Drawing.Size(302, 44);
             this.stPanel3.TabIndex = 2;
             // 
             // activeEditorChkBox
@@ -209,6 +211,18 @@
             this.activeEditorChkBox.Text = "Add Files to Active Editor";
             this.activeEditorChkBox.UseVisualStyleBackColor = true;
             this.activeEditorChkBox.CheckedChanged += new System.EventHandler(this.activeEditorChkBox_CheckedChanged);
+            // 
+            // enableBackupsChkBox
+            // 
+            this.enableBackupsChkBox.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.enableBackupsChkBox.AutoSize = true;
+            this.enableBackupsChkBox.Location = new System.Drawing.Point(138, 22);
+            this.enableBackupsChkBox.Name = "enableBackupsChkBox";
+            this.enableBackupsChkBox.Size = new System.Drawing.Size(102, 17);
+            this.enableBackupsChkBox.TabIndex = 4;
+            this.enableBackupsChkBox.Text = "Enable Backups";
+            this.enableBackupsChkBox.UseVisualStyleBackColor = true;
+            this.enableBackupsChkBox.CheckedChanged += new System.EventHandler(this.enableBackupsChkBox_CheckedChanged);
             // 
             // searchImgPB
             // 
@@ -330,6 +344,7 @@
         private TreeViewCustom treeViewCustom1;
         private System.Windows.Forms.PictureBox searchImgPB;
         private STCheckBox activeEditorChkBox;
+        private STCheckBox enableBackupsChkBox;
         private STMenuStrip objectEditorMenu;
         private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem openToolStripMenuItem;

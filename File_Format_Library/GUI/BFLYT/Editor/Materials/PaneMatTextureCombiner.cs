@@ -23,6 +23,7 @@ namespace LayoutBXLYT
 
         public void LoadMaterial(BxlytMaterial material, PaneEditor paneEditor)
         {
+            loaded = false;
             ActiveMaterial = material;
             ParentEditor = paneEditor;
 
@@ -43,6 +44,8 @@ namespace LayoutBXLYT
             {
                 tevBasicPanel.Hide();
             }
+
+            loaded = true;
         }
 
         private void tevStageCB_SelectedIndexChanged(object sender, EventArgs e)
@@ -74,7 +77,12 @@ namespace LayoutBXLYT
             var tevStage = ActiveMaterial.TevStages[index];
 
             tevStage.ColorMode = (TevMode)tevColorModeCB.SelectedItem;
-            tevStage.AlphaMode = (TevMode)tevColorModeCB.SelectedItem;
+            tevStage.AlphaMode = (TevMode)tevAlphaModeCB.SelectedItem;
+
+            if (ActiveMaterial is LayoutBXLYT.Revolution.Material revMaterial)
+                revMaterial.MarkEdited();
+
+            ParentEditor.PropertyChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

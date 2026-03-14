@@ -25,6 +25,7 @@ namespace Toolbox.Library.IO
                 throw new System.NotImplementedException("Make sure to impliment a IFileInfo instance if a format is being created!");
 
             Cursor.Current = Cursors.WaitCursor;
+            string requestedPath = FileName;
             FileFormat.FilePath = FileName;
 
             string compressionLog = "";
@@ -45,16 +46,16 @@ namespace Toolbox.Library.IO
                     mem,
                     FileFormat.IFileInfo.FileIsCompressed,
                     FileFormat.IFileInfo.Alignment,
-                    FileName,
+                    requestedPath,
                     EnableDialog);
 
                 compressionLog = finalStream.Item2;
                 Stream compressionStream = finalStream.Item1;
 
                 FileFormat.IFileInfo.CompressedSize = (uint)compressionStream.Length;
-                compressionStream.ExportToFile(FileName);
+                compressionStream.ExportToFile(requestedPath);
 
-                DetailsLog += "\n" + SatisfyFileTables(FileFormat, FileName, compressionStream,
+                DetailsLog += "\n" + SatisfyFileTables(FileFormat, requestedPath, compressionStream,
                                     FileFormat.IFileInfo.DecompressedSize,
                                     FileFormat.IFileInfo.CompressedSize,
                                     FileFormat.IFileInfo.FileIsCompressed);
@@ -65,9 +66,9 @@ namespace Toolbox.Library.IO
             else
             {
                 //Check if a stream is active and the file is beinng saved to the same opened file
-                if (FileFormat is ISaveOpenedFileStream && FileFormat.FilePath == FileName && File.Exists(FileName))
+                if (FileFormat is ISaveOpenedFileStream && FileFormat.FilePath == requestedPath && File.Exists(requestedPath))
                 {
-                    string savedPath = Path.GetDirectoryName(FileName);
+                    string savedPath = Path.GetDirectoryName(requestedPath);
                     string tempPath = Path.Combine(savedPath, "tempST.bin");
 
                     //Save a temporary file first to not disturb the opened file
@@ -77,12 +78,12 @@ namespace Toolbox.Library.IO
                         FileFormat.Unload();
 
                         //After saving is done remove the existing file
-                        File.Delete(FileName);
+                        File.Delete(requestedPath);
 
                         //Now move and rename our temp file to the new file path
-                        File.Move(tempPath, FileName);
+                        File.Move(tempPath, requestedPath);
 
-                        FileFormat.Load(File.OpenRead(FileName));
+                        FileFormat.Load(File.OpenRead(requestedPath));
 
                         var activeForm = LibraryGUI.GetActiveForm();
                         if (activeForm != null && activeForm is ObjectEditor)
@@ -91,19 +92,21 @@ namespace Toolbox.Library.IO
                 }
                 else
                 {
-                    using (var fileStream = new FileStream(FileName, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+                    using (var fileStream = new FileStream(requestedPath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
                     {
                         FileFormat.Save(fileStream);
                     }
                 }
             }
 
+            Runtime.BackupSavedFile(requestedPath);
+
             if (EnableDialog)
             {
                 if (compressionLog != string.Empty)
-                    MessageBox.Show($"File has been saved to {FileName}. Compressed time: {compressionLog}", "Save Notification");
+                    MessageBox.Show($"File has been saved to {requestedPath}. Compressed time: {compressionLog}", "Save Notification");
                 else
-                    MessageBox.Show($"File has been saved to {FileName}", "Save Notification");
+                    MessageBox.Show($"File has been saved to {requestedPath}", "Save Notification");
             }
 
             //   STSaveLogDialog.Show($"File has been saved to {FileName}", "Save Notification", DetailsLog);
@@ -238,17 +241,18 @@ namespace Toolbox.Library.IO
             int Alignment, string FileName, bool EnableDialog = true, string DetailsLog = "")
         {
             uint DecompressedSize = (uint)data.Length;
+            string outputPath = FileName;
 
             Cursor.Current = Cursors.WaitCursor;
-            var compressedData = CompressFileFormat(CompressionFormat, new MemoryStream(data), FileIsCompressed, Alignment, FileName, EnableDialog);
+            var compressedData = CompressFileFormat(CompressionFormat, new MemoryStream(data), FileIsCompressed, Alignment, outputPath, EnableDialog);
             string compressionLog = compressedData.Item2;
             Stream FinalData = compressedData.Item1;
 
-            FinalData.ExportToFile(FileName);
+            FinalData.ExportToFile(outputPath);
 
             uint CompressedSize = (uint)FinalData.Length;
 
-            DetailsLog += "\n" + SatisfyFileTables(null, FileName, new MemoryStream(data),
+            DetailsLog += "\n" + SatisfyFileTables(null, outputPath, new MemoryStream(data),
                          DecompressedSize,
                          CompressedSize,
                          FileIsCompressed);
@@ -256,7 +260,9 @@ namespace Toolbox.Library.IO
             FinalData.Flush();
             FinalData.Close();
 
-            MessageBox.Show($"File has been saved to {FileName}", "Save Notification");
+            Runtime.BackupSavedFile(outputPath);
+
+            MessageBox.Show($"File has been saved to {outputPath}", "Save Notification");
 
             //   STSaveLogDialog.Show($"File has been saved to {FileName}", "Save Notification", DetailsLog);
             Cursor.Current = Cursors.Default;

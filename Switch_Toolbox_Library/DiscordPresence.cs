@@ -49,7 +49,7 @@ namespace Switch_Toolbox_Library
                 Assets = new Assets()
                 {
                     LargeImageKey = "toolbox-logo",
-                    LargeImageText = "Switch Toolbox"
+                    LargeImageText = "Scrapper's Toolbox"
                 }
             });
         }

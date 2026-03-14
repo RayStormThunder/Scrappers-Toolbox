@@ -47,6 +47,9 @@ namespace Toolbox.Library.Forms
             true);
         }
 
+        public bool ShowBorder { get; set; } = false;
+        public Color BorderColor { get; set; } = Color.Red;
+
         protected override void OnPaint(PaintEventArgs pe)
         {
             pe.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
@@ -64,6 +67,16 @@ namespace Toolbox.Library.Forms
 
             pe.Graphics.FillRectangle(RGBColor, new RectangleF(rgbPos.X, rgbPos.Y, Width / 2, Height));
             pe.Graphics.FillRectangle(AlphaColor, new RectangleF(alphaPos.X, alphaPos.Y, Width / 2, Height));
+
+            if (ShowBorder && Width > 1 && Height > 1)
+            {
+                ControlPaint.DrawBorder(pe.Graphics,
+                    ClientRectangle,
+                    BorderColor, 2, ButtonBorderStyle.Solid,
+                    BorderColor, 2, ButtonBorderStyle.Solid,
+                    BorderColor, 2, ButtonBorderStyle.Solid,
+                    BorderColor, 2, ButtonBorderStyle.Solid);
+            }
 
             base.OnPaint(pe);
         }

@@ -14,6 +14,9 @@ namespace Toolbox.Library.Forms
     {
         public EventHandler OnColorChanged;
 
+        public bool ShowBorder { get; set; } = false;
+        public Color BorderColor { get; set; } = Color.Red;
+
         private Color TLColor;
         private Color TRColor;
         private Color BLColor;
@@ -408,6 +411,16 @@ namespace Toolbox.Library.Forms
                     DrawSelectionOutline(pe, RightHit, ColorBlend(BottomRightColor, TopRightColor));
                 if (LeftHit.IsHit(mouseLoc))
                     DrawSelectionOutline(pe, LeftHit, ColorBlend(BottomLeftColor, TopLeftColor));
+            }
+
+            if (ShowBorder && Width > 1 && Height > 1)
+            {
+                ControlPaint.DrawBorder(pe.Graphics,
+                    ClientRectangle,
+                    BorderColor, 2, ButtonBorderStyle.Solid,
+                    BorderColor, 2, ButtonBorderStyle.Solid,
+                    BorderColor, 2, ButtonBorderStyle.Solid,
+                    BorderColor, 2, ButtonBorderStyle.Solid);
             }
 
             base.OnPaint(pe);

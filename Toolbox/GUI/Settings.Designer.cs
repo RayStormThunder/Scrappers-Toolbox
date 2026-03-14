@@ -246,10 +246,10 @@
             this.panel2.Controls.Add(this.chkBoxDisplayModels);
             this.panel2.Controls.Add(this.chkBoxStereoscopy);
             this.panel2.Controls.Add(this.label2);
-            this.panel2.Location = new System.Drawing.Point(4, 130);
+            this.panel2.Location = new System.Drawing.Point(4, 160);
             this.panel2.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.panel2.Name = "panel2";
-            this.panel2.Size = new System.Drawing.Size(712, 361);
+            this.panel2.Size = new System.Drawing.Size(712, 331);
             this.panel2.TabIndex = 4;
             // 
             // chkViewportAxisLines
@@ -849,7 +849,7 @@
             this.panel3.Location = new System.Drawing.Point(299, 4);
             this.panel3.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.panel3.Name = "panel3";
-            this.panel3.Size = new System.Drawing.Size(417, 119);
+            this.panel3.Size = new System.Drawing.Size(417, 149);
             this.panel3.TabIndex = 18;
             // 
             // chkBoxMdiMaximized
@@ -951,7 +951,7 @@
             this.chkAlwaysSaveAll.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.chkAlwaysSaveAll.Name = "chkAlwaysSaveAll";
             this.chkAlwaysSaveAll.Size = new System.Drawing.Size(183, 20);
-            this.chkAlwaysSaveAll.TabIndex = 20;
+            this.chkAlwaysSaveAll.TabIndex = 21;
             this.chkAlwaysSaveAll.Text = "Always save all open files";
             this.chkAlwaysSaveAll.TextAlign = System.Drawing.ContentAlignment.TopLeft;
             this.chkAlwaysSaveAll.UseVisualStyleBackColor = true;
@@ -964,7 +964,7 @@
             this.chkAlwaysCompressOnSave.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.chkAlwaysCompressOnSave.Name = "chkAlwaysCompressOnSave";
             this.chkAlwaysCompressOnSave.Size = new System.Drawing.Size(274, 20);
-            this.chkAlwaysCompressOnSave.TabIndex = 19;
+            this.chkAlwaysCompressOnSave.TabIndex = 22;
             this.chkAlwaysCompressOnSave.Text = "Always compress on save (if used on file)";
             this.chkAlwaysCompressOnSave.TextAlign = System.Drawing.ContentAlignment.TopLeft;
             this.chkAlwaysCompressOnSave.UseVisualStyleBackColor = true;
@@ -977,7 +977,7 @@
             this.chkFrameCamera.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.chkFrameCamera.Name = "chkFrameCamera";
             this.chkFrameCamera.Size = new System.Drawing.Size(261, 20);
-            this.chkFrameCamera.TabIndex = 18;
+            this.chkFrameCamera.TabIndex = 23;
             this.chkFrameCamera.Text = "Center camera to model when selected";
             this.chkFrameCamera.TextAlign = System.Drawing.ContentAlignment.TopLeft;
             this.chkFrameCamera.UseVisualStyleBackColor = true;
@@ -986,11 +986,11 @@
             // modelLoadArchive
             // 
             this.modelLoadArchive.AutoSize = true;
-            this.modelLoadArchive.Location = new System.Drawing.Point(12, 334);
+            this.modelLoadArchive.Location = new System.Drawing.Point(12, 359);
             this.modelLoadArchive.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.modelLoadArchive.Name = "modelLoadArchive";
             this.modelLoadArchive.Size = new System.Drawing.Size(254, 20);
-            this.modelLoadArchive.TabIndex = 17;
+            this.modelLoadArchive.TabIndex = 22;
             this.modelLoadArchive.Text = "Load models when an archive is open";
             this.modelLoadArchive.TextAlign = System.Drawing.ContentAlignment.TopLeft;
             this.modelLoadArchive.UseVisualStyleBackColor = true;

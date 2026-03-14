@@ -17,6 +17,11 @@ namespace LayoutBXLYT
     {
         private EventHandler OnProperySelected;
         private bool isLoaded = false;
+        private bool suppressSelectionEvent = false;
+        private bool hasPreferredAnimations = false;
+        private string activeLayoutName = string.Empty;
+        private ListViewItem lastValidAnimationItem = null;
+        private ListViewItem ignoreNextGraySelectionItem = null;
         private LayoutEditor ParentEditor;
         private ImageList imgList = new ImageList();
 
@@ -32,6 +37,7 @@ namespace LayoutBXLYT
             listView1.BackColor = FormThemes.BaseTheme.FormBackColor;
             listView1.ForeColor = FormThemes.BaseTheme.FormForeColor;
             listView1.FullRowSelect = true;
+            listView1.MultiSelect = false;
 
             imgList = new ImageList()
             {
@@ -43,30 +49,58 @@ namespace LayoutBXLYT
 
             listView1.SmallImageList = imgList;
             listView1.LargeImageList = imgList;
+            listView1.Sorting = SortOrder.None;
+        }
 
-            listView1.Sorting = SortOrder.Ascending;
+        private static bool IsAnimationFile(ArchiveFileInfo file)
+        {
+            var ext = Utils.GetExtension(file.FileName);
+            return ext == ".brlan" || ext == ".bclan" || ext == ".bflan";
+        }
+
+        private bool IsPreferredAnimationName(string animFileName)
+        {
+            if (string.IsNullOrEmpty(activeLayoutName))
+                return false;
+
+            var name = System.IO.Path.GetFileNameWithoutExtension(animFileName).ToLower();
+            return name.Contains(activeLayoutName);
         }
 
         public void SearchAnimations(BxlytHeader bxlyt)
         {
             isLoaded = false;
+            lastValidAnimationItem = null;
+
+            listView1.Items.Clear();
 
             var layoutFile = bxlyt.FileInfo;
             var parentArchive = layoutFile.IFileInfo.ArchiveParent;
             if (parentArchive == null) return;
 
-            listView1.BeginUpdate();
-            foreach (var file in parentArchive.Files)
+            activeLayoutName = System.IO.Path.GetFileNameWithoutExtension(bxlyt.FileName).ToLower();
+
+            var files = parentArchive.Files.Where(IsAnimationFile).ToList();
+            var preferred = files.Where(x => IsPreferredAnimationName(x.FileName)).ToList();
+            hasPreferredAnimations = preferred.Count > 0;
+
+            List<ArchiveFileInfo> ordered = new List<ArchiveFileInfo>();
+            if (hasPreferredAnimations)
             {
-                if (Utils.GetExtension(file.FileName) == ".brlan" ||
-                    Utils.GetExtension(file.FileName) == ".bclan" ||
-                    Utils.GetExtension(file.FileName) == ".bflan")
-                {
-                    LoadAnimation(file);
-                }
+                ordered.AddRange(preferred);
+                ordered.AddRange(files.Where(x => !IsPreferredAnimationName(x.FileName)));
+            }
+            else
+            {
+                // Keep archive order if no matching animations exist.
+                ordered.AddRange(files);
             }
 
-            listView1.Sort();
+            listView1.BeginUpdate();
+            foreach (var file in ordered)
+            {
+                LoadAnimation(file);
+            }
             listView1.EndUpdate();
 
             isLoaded = true;
@@ -74,11 +108,16 @@ namespace LayoutBXLYT
 
         public void LoadAnimation(ArchiveFileInfo archiveEntry)
         {
-            listView1.Items.Add(new ListViewItem(System.IO.Path.GetFileName(archiveEntry.FileName))
+            var item = new ListViewItem(System.IO.Path.GetFileName(archiveEntry.FileName))
             {
                 Tag = archiveEntry,
                 ImageKey = "LayoutAnimation",
-            });
+            };
+
+            if (hasPreferredAnimations && !IsPreferredAnimationName(archiveEntry.FileName))
+                item.ForeColor = Color.Gray;
+
+            listView1.Items.Add(item);
         }
 
         public void LoadAnimation(BxlanHeader bxlan)
@@ -93,7 +132,6 @@ namespace LayoutBXLYT
                 Tag = bxlan,
                 ImageKey = "LayoutAnimation",
             });
-            listView1.Sort();
             listView1.EndUpdate();
 
             isLoaded = true;
@@ -101,8 +139,106 @@ namespace LayoutBXLYT
 
         public ListView.SelectedListViewItemCollection GetSelectedAnimations => listView1.SelectedItems;
 
+        public IEnumerable<ListViewItem> GetAllAnimationItems()
+        {
+            return listView1.Items.Cast<ListViewItem>();
+        }
+
+        private bool IsSelectableWithoutPrompt(ListViewItem item)
+        {
+            return !hasPreferredAnimations || item.ForeColor != Color.Gray;
+        }
+
+        private ListViewItem GetFirstValidAnimationItem()
+        {
+            foreach (ListViewItem item in listView1.Items)
+            {
+                if (IsSelectableWithoutPrompt(item))
+                    return item;
+            }
+            return null;
+        }
+
+        private ListViewItem GetFallbackAnimationItem()
+        {
+            if (lastValidAnimationItem != null &&
+                lastValidAnimationItem.ListView == listView1 &&
+                IsSelectableWithoutPrompt(lastValidAnimationItem))
+            {
+                return lastValidAnimationItem;
+            }
+
+            return GetFirstValidAnimationItem();
+        }
+
+        private void SelectSingleItem(ListViewItem item, bool applySelection)
+        {
+            suppressSelectionEvent = true;
+            foreach (ListViewItem selectedItem in listView1.SelectedItems)
+                selectedItem.Selected = false;
+
+            if (item != null)
+            {
+                item.Selected = true;
+                item.Focused = true;
+                item.EnsureVisible();
+            }
+            suppressSelectionEvent = false;
+
+            if (applySelection && item != null && isLoaded)
+            {
+                var args = new ListViewItemSelectionChangedEventArgs(item, item.Index, true);
+                OnProperySelected.Invoke("Select", args);
+            }
+        }
+
         private void listView1_ItemSelectionChanged(object sender, ListViewItemSelectionChangedEventArgs e)
         {
+            if (suppressSelectionEvent)
+                return;
+
+            if (isLoaded && e.IsSelected && hasPreferredAnimations && e.Item.ForeColor == Color.Gray)
+            {
+                if (ignoreNextGraySelectionItem == e.Item)
+                {
+                    ignoreNextGraySelectionItem = null;
+                    SelectSingleItem(GetFallbackAnimationItem(), false);
+                    return;
+                }
+
+                var requestedItem = e.Item;
+                var fallbackItem = GetFallbackAnimationItem();
+
+                // Immediately switch away from gray selection before prompting.
+                SelectSingleItem(fallbackItem, fallbackItem != null);
+                if (fallbackItem != null)
+                    lastValidAnimationItem = fallbackItem;
+
+                var result = MessageBox.Show(
+                    "This animation appears to belong to a different layout. Apply it anyway?",
+                    "Apply Animation",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (result == DialogResult.Yes)
+                {
+                    SelectSingleItem(requestedItem, true);
+                    lastValidAnimationItem = requestedItem;
+                }
+                else
+                {
+                    // Some ListView selection flows immediately reselect the clicked item after NO.
+                    // Ignore that one reselect to prevent a second prompt.
+                    ignoreNextGraySelectionItem = requestedItem;
+                    SelectSingleItem(fallbackItem, fallbackItem != null);
+                }
+
+                return;
+            }
+
+            if (isLoaded && e.IsSelected && IsSelectableWithoutPrompt(e.Item))
+                lastValidAnimationItem = e.Item;
+
             if (isLoaded)
                 OnProperySelected.Invoke("Select", e);
 

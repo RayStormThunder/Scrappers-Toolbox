@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.lblDefaultColors = new Toolbox.Library.Forms.STLabel();
             this.chkAlphaInterpolation = new Toolbox.Library.Forms.STCheckBox();
             this.stLabel1 = new Toolbox.Library.Forms.STLabel();
             this.stLabel2 = new Toolbox.Library.Forms.STLabel();
@@ -45,12 +46,24 @@
             this.tevColor3PB = new Toolbox.Library.Forms.ColorAlphaBox();
             this.stLabel7 = new Toolbox.Library.Forms.STLabel();
             this.stLabel8 = new Toolbox.Library.Forms.STLabel();
+            this.lblFrameColors = new Toolbox.Library.Forms.STLabel();
+            this.animationColorsPanel = new Toolbox.Library.Forms.STPanel();
             this.SuspendLayout();
+            // 
+            // lblDefaultColors
+            // 
+            this.lblDefaultColors.AutoSize = true;
+            this.lblDefaultColors.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblDefaultColors.Location = new System.Drawing.Point(12, 2);
+            this.lblDefaultColors.Name = "lblDefaultColors";
+            this.lblDefaultColors.Size = new System.Drawing.Size(126, 20);
+            this.lblDefaultColors.TabIndex = 20;
+            this.lblDefaultColors.Text = "Default Colors";
             // 
             // chkAlphaInterpolation
             // 
             this.chkAlphaInterpolation.AutoSize = true;
-            this.chkAlphaInterpolation.Location = new System.Drawing.Point(16, 13);
+            this.chkAlphaInterpolation.Location = new System.Drawing.Point(16, 25);
             this.chkAlphaInterpolation.Name = "chkAlphaInterpolation";
             this.chkAlphaInterpolation.Size = new System.Drawing.Size(147, 17);
             this.chkAlphaInterpolation.TabIndex = 0;
@@ -81,7 +94,7 @@
             this.whiteColorPB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.whiteColorPB.Color = System.Drawing.Color.Empty;
             this.whiteColorPB.DisplayAlphaSolid = true;
-            this.whiteColorPB.Location = new System.Drawing.Point(16, 36);
+            this.whiteColorPB.Location = new System.Drawing.Point(16, 48);
             this.whiteColorPB.Name = "whiteColorPB";
             this.whiteColorPB.Size = new System.Drawing.Size(90, 45);
             this.whiteColorPB.TabIndex = 5;
@@ -93,7 +106,7 @@
             this.blackColorBP.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.blackColorBP.Color = System.Drawing.Color.Empty;
             this.blackColorBP.DisplayAlphaSolid = true;
-            this.blackColorBP.Location = new System.Drawing.Point(16, 87);
+            this.blackColorBP.Location = new System.Drawing.Point(16, 99);
             this.blackColorBP.Name = "blackColorBP";
             this.blackColorBP.Size = new System.Drawing.Size(90, 45);
             this.blackColorBP.TabIndex = 6;
@@ -105,7 +118,7 @@
             this.colorReg3PB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.colorReg3PB.Color = System.Drawing.Color.Empty;
             this.colorReg3PB.DisplayAlphaSolid = true;
-            this.colorReg3PB.Location = new System.Drawing.Point(180, 36);
+            this.colorReg3PB.Location = new System.Drawing.Point(180, 48);
             this.colorReg3PB.Name = "colorReg3PB";
             this.colorReg3PB.Size = new System.Drawing.Size(90, 45);
             this.colorReg3PB.TabIndex = 8;
@@ -126,7 +139,7 @@
             this.materialColorPB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.materialColorPB.Color = System.Drawing.Color.Empty;
             this.materialColorPB.DisplayAlphaSolid = true;
-            this.materialColorPB.Location = new System.Drawing.Point(180, 87);
+            this.materialColorPB.Location = new System.Drawing.Point(180, 99);
             this.materialColorPB.Name = "materialColorPB";
             this.materialColorPB.Size = new System.Drawing.Size(90, 45);
             this.materialColorPB.TabIndex = 10;
@@ -147,7 +160,7 @@
             this.tevColor1PB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.tevColor1PB.Color = System.Drawing.Color.Empty;
             this.tevColor1PB.DisplayAlphaSolid = true;
-            this.tevColor1PB.Location = new System.Drawing.Point(16, 138);
+            this.tevColor1PB.Location = new System.Drawing.Point(16, 150);
             this.tevColor1PB.Name = "tevColor1PB";
             this.tevColor1PB.Size = new System.Drawing.Size(90, 45);
             this.tevColor1PB.TabIndex = 12;
@@ -168,7 +181,7 @@
             this.tevColor2PB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.tevColor2PB.Color = System.Drawing.Color.Empty;
             this.tevColor2PB.DisplayAlphaSolid = true;
-            this.tevColor2PB.Location = new System.Drawing.Point(180, 138);
+            this.tevColor2PB.Location = new System.Drawing.Point(180, 150);
             this.tevColor2PB.Name = "tevColor2PB";
             this.tevColor2PB.Size = new System.Drawing.Size(90, 45);
             this.tevColor2PB.TabIndex = 14;
@@ -189,7 +202,7 @@
             this.tevColor4PB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.tevColor4PB.Color = System.Drawing.Color.Empty;
             this.tevColor4PB.DisplayAlphaSolid = true;
-            this.tevColor4PB.Location = new System.Drawing.Point(180, 189);
+            this.tevColor4PB.Location = new System.Drawing.Point(180, 201);
             this.tevColor4PB.Name = "tevColor4PB";
             this.tevColor4PB.Size = new System.Drawing.Size(90, 45);
             this.tevColor4PB.TabIndex = 18;
@@ -201,7 +214,7 @@
             this.tevColor3PB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.tevColor3PB.Color = System.Drawing.Color.Empty;
             this.tevColor3PB.DisplayAlphaSolid = true;
-            this.tevColor3PB.Location = new System.Drawing.Point(16, 189);
+            this.tevColor3PB.Location = new System.Drawing.Point(16, 201);
             this.tevColor3PB.Name = "tevColor3PB";
             this.tevColor3PB.Size = new System.Drawing.Size(90, 45);
             this.tevColor3PB.TabIndex = 16;
@@ -225,10 +238,36 @@
             this.stLabel8.TabIndex = 15;
             this.stLabel8.Text = "Tev Color 3";
             // 
+            // lblFrameColors
+            // 
+            this.lblFrameColors.AutoSize = true;
+            this.lblFrameColors.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblFrameColors.Location = new System.Drawing.Point(12, 250);
+            this.lblFrameColors.Name = "lblFrameColors";
+            this.lblFrameColors.Size = new System.Drawing.Size(114, 20);
+            this.lblFrameColors.TabIndex = 21;
+            this.lblFrameColors.Text = "Frame Colors";
+            // 
+            // animationColorsPanel
+            // 
+            this.animationColorsPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.animationColorsPanel.AutoScroll = true;
+            this.animationColorsPanel.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.animationColorsPanel.Location = new System.Drawing.Point(16, 274);
+            this.animationColorsPanel.Name = "animationColorsPanel";
+            this.animationColorsPanel.Size = new System.Drawing.Size(382, 80);
+            this.animationColorsPanel.TabIndex = 19;
+            this.animationColorsPanel.Visible = true;
+            // 
             // PaneMatRevColorEditor
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Controls.Add(this.lblFrameColors);
+            this.Controls.Add(this.lblDefaultColors);
+            this.Controls.Add(this.animationColorsPanel);
             this.Controls.Add(this.tevColor4PB);
             this.Controls.Add(this.tevColor2PB);
             this.Controls.Add(this.tevColor3PB);
@@ -247,7 +286,7 @@
             this.Controls.Add(this.stLabel1);
             this.Controls.Add(this.chkAlphaInterpolation);
             this.Name = "PaneMatRevColorEditor";
-            this.Size = new System.Drawing.Size(414, 347);
+            this.Size = new System.Drawing.Size(414, 360);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -255,6 +294,7 @@
 
         #endregion
 
+        private Toolbox.Library.Forms.STLabel lblDefaultColors;
         private Toolbox.Library.Forms.STCheckBox chkAlphaInterpolation;
         private Toolbox.Library.Forms.STLabel stLabel1;
         private Toolbox.Library.Forms.STLabel stLabel2;
@@ -272,5 +312,7 @@
         private Toolbox.Library.Forms.ColorAlphaBox tevColor3PB;
         private Toolbox.Library.Forms.STLabel stLabel7;
         private Toolbox.Library.Forms.STLabel stLabel8;
+        private Toolbox.Library.Forms.STLabel lblFrameColors;
+        private Toolbox.Library.Forms.STPanel animationColorsPanel;
     }
 }

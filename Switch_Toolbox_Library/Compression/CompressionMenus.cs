@@ -158,7 +158,7 @@ namespace Toolbox.Library.IO
                     if (failedFiles.Count > 0)
                     {
                         string action = Compress ? "compress" : "decompress";
-                        STErrorDialog.Show($"Some files failed to {action}! See detail list of failed files.", "Switch Toolbox",
+                        STErrorDialog.Show($"Some files failed to {action}! See detail list of failed files.", "Scrapper's Toolbox",
                             string.Join("\n", failedFiles.ToArray()));
                     }
                     else
@@ -201,7 +201,7 @@ namespace Toolbox.Library.IO
                     catch (Exception ex)
                     {
                         string action = Compress ? "compress" : "decompress";
-                        STErrorDialog.Show($"Failed to {action}! See details for info.", "Switch Toolbox", ex.ToString());
+                        STErrorDialog.Show($"Failed to {action}! See details for info.", "Scrapper's Toolbox", ex.ToString());
                     }
                 }
             }

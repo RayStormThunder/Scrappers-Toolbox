@@ -28,8 +28,10 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.nextFrameBtn = new System.Windows.Forms.Button();
             this.button2 = new System.Windows.Forms.Button();
             this.panel1 = new System.Windows.Forms.Panel();
+            this.playPauseLabel = new Toolbox.Library.Forms.STLabel();
             this.stLabel1 = new Toolbox.Library.Forms.STLabel();
             this.frameSpeedUD = new System.Windows.Forms.NumericUpDown();
             this.loopChkBox = new Toolbox.Library.Forms.STCheckBox();
@@ -44,6 +46,20 @@
             ((System.ComponentModel.ISupportInitialize)(this.currentFrameUpDown)).BeginInit();
             this.SuspendLayout();
             // 
+            // nextFrameBtn
+            // 
+            this.nextFrameBtn.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
+            this.nextFrameBtn.BackgroundImage = global::Toolbox.Library.Properties.Resources.arrowR;
+            this.nextFrameBtn.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
+            this.nextFrameBtn.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.nextFrameBtn.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
+            this.nextFrameBtn.Location = new System.Drawing.Point(94, 7);
+            this.nextFrameBtn.Name = "nextFrameBtn";
+            this.nextFrameBtn.Size = new System.Drawing.Size(34, 21);
+            this.nextFrameBtn.TabIndex = 8;
+            this.nextFrameBtn.UseVisualStyleBackColor = false;
+            this.nextFrameBtn.Click += new System.EventHandler(this.nextButton_Click);
+            // 
             // button2
             // 
             this.button2.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
@@ -56,10 +72,13 @@
             this.button2.Size = new System.Drawing.Size(34, 21);
             this.button2.TabIndex = 2;
             this.button2.UseVisualStyleBackColor = false;
+            this.button2.Click += new System.EventHandler(this.prevButton_Click);
             // 
             // panel1
             // 
             this.panel1.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(45)))));
+            this.panel1.Controls.Add(this.playPauseLabel);
+            this.panel1.Controls.Add(this.nextFrameBtn);
             this.panel1.Controls.Add(this.stLabel1);
             this.panel1.Controls.Add(this.frameSpeedUD);
             this.panel1.Controls.Add(this.loopChkBox);
@@ -74,10 +93,19 @@
             this.panel1.TabIndex = 4;
             this.panel1.Paint += new System.Windows.Forms.PaintEventHandler(this.panel1_Paint);
             // 
+            // playPauseLabel
+            // 
+            this.playPauseLabel.AutoSize = true;
+            this.playPauseLabel.Location = new System.Drawing.Point(289, 11);
+            this.playPauseLabel.Name = "playPauseLabel";
+            this.playPauseLabel.Size = new System.Drawing.Size(63, 13);
+            this.playPauseLabel.TabIndex = 9;
+            this.playPauseLabel.Text = "Play/Pause";
+            // 
             // stLabel1
             // 
             this.stLabel1.AutoSize = true;
-            this.stLabel1.Location = new System.Drawing.Point(114, 11);
+            this.stLabel1.Location = new System.Drawing.Point(140, 11);
             this.stLabel1.Name = "stLabel1";
             this.stLabel1.Size = new System.Drawing.Size(27, 13);
             this.stLabel1.TabIndex = 7;
@@ -88,9 +116,9 @@
             this.frameSpeedUD.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
             this.frameSpeedUD.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.frameSpeedUD.ForeColor = System.Drawing.Color.White;
-            this.frameSpeedUD.Location = new System.Drawing.Point(158, 9);
+            this.frameSpeedUD.Location = new System.Drawing.Point(176, 9);
             this.frameSpeedUD.Name = "frameSpeedUD";
-            this.frameSpeedUD.Size = new System.Drawing.Size(87, 16);
+            this.frameSpeedUD.Size = new System.Drawing.Size(72, 16);
             this.frameSpeedUD.TabIndex = 6;
             this.frameSpeedUD.ValueChanged += new System.EventHandler(this.frameSpeedUD_ValueChanged);
             // 
@@ -133,12 +161,12 @@
             // 
             // animationPlayBtn
             // 
-            this.animationPlayBtn.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
+            this.animationPlayBtn.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(48)))), ((int)(((byte)(130)))), ((int)(((byte)(58)))));
             this.animationPlayBtn.BackgroundImage = global::Toolbox.Library.Properties.Resources.arrowR;
             this.animationPlayBtn.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
             this.animationPlayBtn.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.animationPlayBtn.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
-            this.animationPlayBtn.Location = new System.Drawing.Point(57, 7);
+            this.animationPlayBtn.ForeColor = System.Drawing.Color.White;
+            this.animationPlayBtn.Location = new System.Drawing.Point(254, 7);
             this.animationPlayBtn.Name = "animationPlayBtn";
             this.animationPlayBtn.Size = new System.Drawing.Size(31, 21);
             this.animationPlayBtn.TabIndex = 1;
@@ -190,9 +218,11 @@
         }
 
         #endregion
+        private System.Windows.Forms.Button nextFrameBtn;
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Button animationPlayBtn;
         private System.Windows.Forms.Panel panel1;
+        private Forms.STLabel playPauseLabel;
         private System.Windows.Forms.NumericUpDown totalFrame;
         private System.Windows.Forms.NumericUpDown currentFrameUpDown;
         private Forms.STPanel stPanel1;

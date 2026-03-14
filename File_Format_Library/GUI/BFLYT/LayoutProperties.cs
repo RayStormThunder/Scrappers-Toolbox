@@ -62,8 +62,7 @@ namespace LayoutBXLYT
 
         private void LoadUserData(IUserDataContainer container)
         {
-            if (container.UserData != null && container.UserData.Entries != null)
-                userDataEditor.LoadUserData(container as BasePane, container.UserData);
+            userDataEditor.LoadUserData(container as BasePane, container.UserData);
         }
 
         class DoubleBufferedTabPage : System.Windows.Forms.TabPage

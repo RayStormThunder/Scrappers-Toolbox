@@ -205,7 +205,7 @@ namespace LayoutBXLYT.CTR
 
         public void Write(FileWriter writer, LayoutHeader header)
         {
-            writer.WriteString(Name, 20);
+            WriteFixedString(writer, Name, 20);
             writer.Write(BlackColor);
             writer.Write(WhiteColor);
             writer.Write(TevConstantColors);
@@ -282,6 +282,29 @@ namespace LayoutBXLYT.CTR
             using (writer.TemporarySeek(flagPos, System.IO.SeekOrigin.Begin)) {
                 writer.Write(flags);
             }
+        }
+
+        private static void WriteFixedString(FileWriter writer, string value, int fixedSize)
+        {
+            if (fixedSize <= 0)
+                return;
+
+            Encoding encoding = writer.Encoding ?? Encoding.ASCII;
+            string stringValue = value ?? string.Empty;
+            
+            // Truncate to fit within the fixed field (leaving room for null terminator)
+            if (stringValue.Length > fixedSize - 1)
+                stringValue = stringValue.Substring(0, fixedSize - 1);
+            
+            byte[] bytes = encoding.GetBytes(stringValue);
+            writer.Write(bytes);
+            writer.Write((byte)0);  // Null terminator
+            
+            // Pad remaining space with zeros
+            int totalWritten = bytes.Length + 1;
+            int padding = fixedSize - totalWritten;
+            if (padding > 0)
+                writer.Write(new byte[padding]);
         }
     }
 }

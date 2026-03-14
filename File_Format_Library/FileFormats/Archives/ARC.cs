@@ -1,22 +1,18 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Toolbox;
-using System.Windows.Forms;
 using Toolbox.Library;
-using Toolbox.Library.IO;
 
 namespace FirstPlugin
 {
     public class ARC : IArchiveFile, IFileFormat
     {
-        public FileType FileType { get; set; } = FileType.Archive;
+        private readonly U8 _u8 = new U8();
 
+        public FileType FileType { get; set; } = FileType.Archive;
         public bool CanSave { get; set; }
-        public string[] Description { get; set; } = new string[] { "Mario Kart Arcade GP DX Layout Archive (PAC)" };
-        public string[] Extension { get; set; } = new string[] { "*.arc" };
+        public string[] Description { get; set; } = new[] { "ARC (U8)" };
+        public string[] Extension { get; set; } = new[] { "*.arc" };
         public string FileName { get; set; }
         public string FilePath { get; set; }
         public IFileInfo IFileInfo { get; set; }
@@ -26,61 +22,55 @@ namespace FirstPlugin
         public bool CanReplaceFiles { get; set; }
         public bool CanDeleteFiles { get; set; }
 
+        public IEnumerable<ArchiveFileInfo> Files => _u8.Files;
+
+        public Type[] Types => _u8.Types;
+
         public bool Identify(System.IO.Stream stream)
         {
-            using (var reader = new Toolbox.Library.IO.FileReader(stream, true))
-            {
-                return reader.ReadInt64() == 0x000000000000;
-            }
+            _u8.FileName = FileName;
+            _u8.FilePath = FilePath;
+            _u8.IFileInfo = IFileInfo;
+            return _u8.Identify(stream);
         }
-
-        public Type[] Types
-        {
-            get
-            {
-                List<Type> types = new List<Type>();
-                return types.ToArray();
-            }
-        }
-
-        public List<FileEntry> files = new List<FileEntry>();
-
-        public IEnumerable<ArchiveFileInfo> Files => files;
-
-        public void ClearFiles() { files.Clear(); }
 
         public void Load(System.IO.Stream stream)
         {
-            using (var reader = new FileReader(stream))
-            {
-                reader.ByteOrder = Syroot.BinaryData.ByteOrder.LittleEndian;
-                long Identifier = reader.ReadInt64();
-                ulong ChunkSection1 = reader.ReadUInt64();
-            }
-        }
+            _u8.FileName = FileName;
+            _u8.FilePath = FilePath;
+            _u8.IFileInfo = IFileInfo;
+            _u8.Load(stream);
 
-        public void Unload()
-        {
-
+            CanSave = _u8.CanSave;
+            CanAddFiles = _u8.CanAddFiles;
+            CanRenameFiles = _u8.CanRenameFiles;
+            CanReplaceFiles = _u8.CanReplaceFiles;
+            CanDeleteFiles = _u8.CanDeleteFiles;
         }
 
         public void Save(System.IO.Stream stream)
         {
+            _u8.Save(stream);
+        }
+
+        public void ClearFiles()
+        {
+            _u8.ClearFiles();
         }
 
         public bool AddFile(ArchiveFileInfo archiveFileInfo)
         {
-            return false;
+            return _u8.AddFile(archiveFileInfo);
         }
 
         public bool DeleteFile(ArchiveFileInfo archiveFileInfo)
         {
-            return false;
+            return _u8.DeleteFile(archiveFileInfo);
         }
 
-        public class FileEntry : ArchiveFileInfo
+        public void Unload()
         {
-          
+            _u8.Unload();
         }
     }
 }

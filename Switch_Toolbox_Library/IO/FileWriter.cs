@@ -67,15 +67,24 @@ namespace Toolbox.Library.IO
         }
 
         public void Write(STColor color)  {
-            Write(color.ToBytes());
+            Write(color.R);
+            Write(color.G);
+            Write(color.B);
+            Write(color.A);
         }
 
         public void Write(STColor8 color) {
-            Write(color.ToBytes());
+            Write(color.R);
+            Write(color.G);
+            Write(color.B);
+            Write(color.A);
         }
 
         public void Write(STColor16 color) {
-            Write(color.ToUShorts());
+            Write(color.R);
+            Write(color.G);
+            Write(color.B);
+            Write(color.A);
         }
 
         public void Write(STColor8[] colors)

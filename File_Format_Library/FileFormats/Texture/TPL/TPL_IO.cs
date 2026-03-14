@@ -90,7 +90,18 @@ namespace FirstPlugin
                     {
                         if (Images[i].PaletteHeader != null) {
                             writer.WriteUint32Offset(16 + (i * 8));
+                            long paletteHeaderPos = writer.Position;
+
+                            if (Images[i].PaletteHeader.Data != null)
+                                Images[i].PaletteHeader.EntryCount = (ushort)(Images[i].PaletteHeader.Data.Length / 2);
+
                             Images[i].PaletteHeader.Write(writer);
+
+                            if (Images[i].PaletteHeader.Data != null && Images[i].PaletteHeader.Data.Length > 0)
+                            {
+                                writer.WriteUint32Offset(paletteHeaderPos + 8);
+                                writer.Write(Images[i].PaletteHeader.Data);
+                            }
                         }
                     }
 
@@ -260,6 +271,7 @@ namespace FirstPlugin
         {
             public ushort EntryCount { get; set; }
             public byte Unpacked { get; set; }
+            public byte Reserved { get; set; }
             public uint PaletteFormat { get; set; }
             public uint PaletteDataOffset { get; set; }
 
@@ -268,7 +280,7 @@ namespace FirstPlugin
             public PaletteHeader(FileReader reader) {
                 EntryCount = reader.ReadUInt16();
                 Unpacked = reader.ReadByte();
-                reader.ReadByte();
+                Reserved = reader.ReadByte();
                 PaletteFormat = reader.ReadUInt32();
                 PaletteDataOffset = reader.ReadUInt32();
 
@@ -280,7 +292,7 @@ namespace FirstPlugin
             public void Write(FileWriter writer) {
                 writer.Write(EntryCount);
                 writer.Write(Unpacked);
-                writer.Write((byte)0);
+                writer.Write(Reserved);
                 writer.Write(PaletteFormat);
                 writer.Write(PaletteDataOffset);
             }

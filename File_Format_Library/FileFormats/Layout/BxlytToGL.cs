@@ -255,14 +255,22 @@ namespace LayoutBXLYT
 
         public static void RenderBRLYTMaterial(BasePane pane, Revolution.Material mat, Dictionary<string, STGenericTexture> textures)
         {
+            if (mat == null)
+                return;
+
+            var textureMapCount = mat.TextureMaps?.Length ?? 0;
+
             // ShaderLoader.RevShader.Enable();
             if (mat.Shader == null)
             {
                 List<int> texIds = new List<int>();
-                if (mat.TextureMaps.Length > 0)
+                if (textureMapCount > 0)
                 {
-                    for (int i = 0; i < mat.TextureMaps.Length; i++)
+                    for (int i = 0; i < textureMapCount; i++)
                     {
+                        if (mat.TextureMaps[i] == null)
+                            continue;
+
                         string TexName = mat.TextureMaps[i].Name;
                         if (mat.animController.TexturePatterns.ContainsKey((LTPTarget)i))
                             TexName = mat.animController.TexturePatterns[(LTPTarget)i];
@@ -276,7 +284,7 @@ namespace LayoutBXLYT
                     }
                 }
 
-                mat.Shader = new Revolution.Shader(mat, (uint)mat.TextureMaps.Length);
+                mat.Shader = new Revolution.Shader(mat, (uint)textureMapCount);
                 mat.Shader.Compile();
             }
 
@@ -342,12 +350,15 @@ namespace LayoutBXLYT
             mat.Shader.SetInt("uvTestPattern", 10);
             GL.BindTexture(TextureTarget.Texture2D, RenderTools.uvTestPattern.RenderableTex.TexID);
 
-            if (mat.TextureMaps.Length > 0 || Runtime.LayoutEditor.Shading == Runtime.LayoutEditor.DebugShading.UVTestPattern)
+            if (textureMapCount > 0 || Runtime.LayoutEditor.Shading == Runtime.LayoutEditor.DebugShading.UVTestPattern)
                 GL.Enable(EnableCap.Texture2D);
 
             int id = 1;
-            for (int i = 0; i < mat.TextureMaps.Length; i++)
+            for (int i = 0; i < textureMapCount; i++)
             {
+                if (mat.TextureMaps[i] == null)
+                    continue;
+
                 string TexName = mat.TextureMaps[i].Name;
                 if (mat.animController.TexturePatterns.ContainsKey((LTPTarget)i))
                     TexName = mat.animController.TexturePatterns[(LTPTarget)i];
@@ -364,8 +375,11 @@ namespace LayoutBXLYT
                     float rotate = 0;
                     var translate = new Syroot.Maths.Vector2F(0, 0);
 
-                    int index = (int)mat.TexCoordGens[i].MatrixSource / 3 - 10;
-                    if (mat.TextureTransforms.Length > index)
+                    int index = -1;
+                    if (mat.TexCoordGens != null && mat.TexCoordGens.Count > i)
+                        index = (int)mat.TexCoordGens[i].MatrixSource / 3 - 10;
+
+                    if (index >= 0 && mat.TextureTransforms != null && mat.TextureTransforms.Length > index)
                     {
                         var transform = mat.TextureTransforms[index];
                         scale = transform.Scale;

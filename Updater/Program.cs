@@ -78,7 +78,7 @@ namespace Updater
             Console.WriteLine("Booting...");
 
             Thread.Sleep(3000);
-            System.Diagnostics.Process.Start(Path.Combine(folderDir, "Toolbox.exe"));
+            System.Diagnostics.Process.Start(Path.Combine(folderDir, "Scrapper's Toolbox.exe"));
         }
         static void Install()
         {

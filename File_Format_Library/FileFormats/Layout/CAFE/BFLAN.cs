@@ -329,6 +329,8 @@ namespace LayoutBXLYT
                     writer.Write(new uint[Textures.Count]);
                     for (int i = 0; i < Textures.Count; i++)
                     {
+                        // Texture offsets in CLYT/CFLYT animations are relative to the
+                        // texture-offset table start (same base used by the reader).
                         writer.WriteUint32Offset(startOfsPos + (i * 4), startOfsPos);
                         writer.WriteString(Textures[i]);
                     }

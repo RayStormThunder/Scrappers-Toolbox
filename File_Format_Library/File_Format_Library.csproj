@@ -619,6 +619,7 @@
       <DependentUpon>CharacterSelector.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\BFLYT\Animations\Basic\LayoutAnimTreeLoader.cs" />
+    <Compile Include="GUI\BFLYT\Animations\FrameColorDataDialog.cs" />
     <Compile Include="GUI\BFLYT\Animations\LytAnimationWindow.cs">
       <SubType>Form</SubType>
     </Compile>

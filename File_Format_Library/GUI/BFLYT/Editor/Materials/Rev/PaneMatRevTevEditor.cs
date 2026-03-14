@@ -59,12 +59,14 @@ namespace LayoutBXLYT.Revolution
 
         private void OnPropertyChanged() {
             ActiveMaterial.Shader.Compile();
+            ActiveMaterial.MarkEdited();
             ParentEditor.PropertyChanged?.Invoke(EventArgs.Empty, null);
         }
 
         private void btnAdd_Click(object sender, EventArgs e) {
             if (ActiveMaterial.TevStages.Length < 3) {
                 ActiveMaterial.TevStages = ActiveMaterial.TevStages.AddToArray(new TevStage());
+                ActiveMaterial.MarkEdited();
                 UpdateMaterial(ActiveMaterial.TevStages.Length - 1);
             }
         }
@@ -74,6 +76,7 @@ namespace LayoutBXLYT.Revolution
             int index = tevStageCB.SelectedIndex;
             if (index != -1) {
                 ActiveMaterial.TevStages = ActiveMaterial.TevStages.RemoveAt(index);
+                ActiveMaterial.MarkEdited();
                 UpdateMaterial(ActiveMaterial.TevStages.Length - 1);
 
                 if (ActiveMaterial.TevStages.Length == 0) {

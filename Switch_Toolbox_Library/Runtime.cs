@@ -3,6 +3,7 @@ using GL_EditorFramework.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 
 namespace Toolbox.Library
@@ -24,6 +25,184 @@ namespace Toolbox.Library
         public static bool DEVELOPER_DEBUG_MODE = false;
         public static bool AlwaysCompressOnSave = false;
         public static bool AlwaysSaveAll = true;
+
+        private const string BackupStateFileName = "backup_state.txt";
+
+        private static string GetBackupRootDirectory(string sourceFilePath)
+        {
+            if (string.IsNullOrEmpty(sourceFilePath))
+                return string.Empty;
+
+            string directory = System.IO.Path.GetDirectoryName(sourceFilePath);
+            if (string.IsNullOrEmpty(directory))
+                directory = ExecutableDir;
+
+            string fileNameNoExt = System.IO.Path.GetFileNameWithoutExtension(sourceFilePath);
+            return System.IO.Path.Combine(directory, fileNameNoExt + " - Backup");
+        }
+
+        private static string GetBackupStateFilePath(string sourceFilePath)
+        {
+            string backupRootDir = GetBackupRootDirectory(sourceFilePath);
+            if (string.IsNullOrEmpty(backupRootDir))
+                return string.Empty;
+
+            return System.IO.Path.Combine(backupRootDir, BackupStateFileName);
+        }
+
+        public static bool IsBackupEnabledForFile(string sourceFilePath)
+        {
+            if (string.IsNullOrEmpty(sourceFilePath))
+                return false;
+
+            string backupRootDir = GetBackupRootDirectory(sourceFilePath);
+            if (!Directory.Exists(backupRootDir))
+                return false;
+
+            string statePath = GetBackupStateFilePath(sourceFilePath);
+            if (!File.Exists(statePath))
+                return false;
+
+            try
+            {
+                string stateText = File.ReadAllText(statePath).Trim();
+                bool enabled;
+                if (bool.TryParse(stateText, out enabled))
+                    return enabled;
+            }
+            catch
+            {
+                return false;
+            }
+
+            return false;
+        }
+
+        public static void SetBackupEnabledForFile(string sourceFilePath, bool enabled)
+        {
+            if (string.IsNullOrEmpty(sourceFilePath))
+                return;
+
+            string backupRootDir = GetBackupRootDirectory(sourceFilePath);
+            if (string.IsNullOrEmpty(backupRootDir))
+                return;
+
+            if (enabled)
+            {
+                Directory.CreateDirectory(backupRootDir);
+            }
+            else if (!Directory.Exists(backupRootDir))
+            {
+                // Do not create backup folder/state file when disabling and no folder exists.
+                return;
+            }
+
+            string statePath = GetBackupStateFilePath(sourceFilePath);
+            File.WriteAllText(statePath, enabled ? "true" : "false");
+        }
+
+        public static string CreateBackupFilePath(string sourceFilePath)
+        {
+            if (string.IsNullOrEmpty(sourceFilePath))
+                return sourceFilePath;
+
+            string fileNameNoExt = System.IO.Path.GetFileNameWithoutExtension(sourceFilePath);
+            string extension = System.IO.Path.GetExtension(sourceFilePath);
+
+            string backupRootDir = GetBackupRootDirectory(sourceFilePath);
+            Directory.CreateDirectory(backupRootDir);
+
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string baseFileName = fileNameNoExt + "_" + timestamp;
+            string candidate = System.IO.Path.Combine(backupRootDir, baseFileName + extension);
+
+            int attempt = 1;
+            while (File.Exists(candidate))
+            {
+                candidate = System.IO.Path.Combine(backupRootDir, baseFileName + "_" + attempt.ToString("D2") + extension);
+                attempt++;
+            }
+
+            return candidate;
+        }
+
+        public static void BackupOriginalOnLoad(string sourceFilePath)
+        {
+            if (string.IsNullOrEmpty(sourceFilePath) || !File.Exists(sourceFilePath))
+                return;
+
+            if (!IsBackupEnabledForFile(sourceFilePath))
+                return;
+
+            if (HasBytePerfectBackup(sourceFilePath))
+                return;
+
+            string backupPath = CreateBackupFilePath(sourceFilePath);
+            File.Copy(sourceFilePath, backupPath);
+        }
+
+        public static void BackupSavedFile(string savedFilePath)
+        {
+            if (string.IsNullOrEmpty(savedFilePath) || !File.Exists(savedFilePath))
+                return;
+
+            if (!IsBackupEnabledForFile(savedFilePath))
+                return;
+
+            string backupPath = CreateBackupFilePath(savedFilePath);
+            File.Copy(savedFilePath, backupPath);
+        }
+
+        private static bool HasBytePerfectBackup(string sourceFilePath)
+        {
+            string extension = System.IO.Path.GetExtension(sourceFilePath);
+            string backupRootDir = GetBackupRootDirectory(sourceFilePath);
+
+            if (!Directory.Exists(backupRootDir))
+                return false;
+
+            foreach (string candidate in Directory.GetFiles(backupRootDir, "*" + extension, SearchOption.AllDirectories))
+            {
+                if (FilesAreByteEqual(sourceFilePath, candidate))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool FilesAreByteEqual(string firstPath, string secondPath)
+        {
+            var firstInfo = new FileInfo(firstPath);
+            var secondInfo = new FileInfo(secondPath);
+            if (firstInfo.Length != secondInfo.Length)
+                return false;
+
+            const int bufferSize = 81920;
+            var bufferA = new byte[bufferSize];
+            var bufferB = new byte[bufferSize];
+
+            using (var streamA = File.OpenRead(firstPath))
+            using (var streamB = File.OpenRead(secondPath))
+            {
+                while (true)
+                {
+                    int readA = streamA.Read(bufferA, 0, bufferA.Length);
+                    int readB = streamB.Read(bufferB, 0, bufferB.Length);
+
+                    if (readA != readB)
+                        return false;
+
+                    if (readA == 0)
+                        return true;
+
+                    for (int i = 0; i < readA; i++)
+                    {
+                        if (bufferA[i] != bufferB[i])
+                            return false;
+                    }
+                }
+            }
+        }
 
         public static class ResourceTables
         {
@@ -103,6 +282,7 @@ namespace Toolbox.Library
         public class LayoutEditor
         {
             public static bool AnimationEditMode = false;
+            public static bool ForceMaxWidthTimeline = false;
 
             public static bool TransformChidlren = false;
 
@@ -130,6 +310,8 @@ namespace Toolbox.Library
             public static Color BackgroundColor = Color.FromArgb(130, 130, 130);
 
             public static DebugShading Shading = DebugShading.Default;
+            public static TextureVisibilityMode VisibilityMode = TextureVisibilityMode.FollowsAnimation;
+            public static MulticlickBehaviorMode MulticlickBehavior = MulticlickBehaviorMode.Absolute;
 
             public enum DebugShading
             {
@@ -138,6 +320,20 @@ namespace Toolbox.Library
                 WhiteColor,
                 BlackColor,
                 UVTestPattern,
+            }
+
+            public enum TextureVisibilityMode
+            {
+                AlwaysVisible,
+                PartialTransparency,
+                FollowsAnimation,
+                NeverVisible,
+            }
+
+            public enum MulticlickBehaviorMode
+            {
+                Absolute,
+                Relative,
             }
         }
 

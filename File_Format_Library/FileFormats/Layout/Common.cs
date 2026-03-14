@@ -12,6 +12,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Reflection;
 using Newtonsoft.Json;
 
 namespace LayoutBXLYT
@@ -59,6 +60,8 @@ namespace LayoutBXLYT
             get { return name; }
             set
             {
+                string previousName = name;
+
                 //Adjust necessary parameters if the user changes the name
                 if (name != null && LayoutFile != null)
                 {
@@ -89,6 +92,8 @@ namespace LayoutBXLYT
                             }
                         }
                     }
+
+                    UpdateGroupPaneReferences(LayoutFile.RootGroup, previousName, value);
                 }
 
                 name = value;
@@ -96,11 +101,35 @@ namespace LayoutBXLYT
                 if (LayoutFile != null && !LayoutFile.PaneLookup.ContainsKey(name))
                     LayoutFile.PaneLookup.Add(name, this);
 
+                if (NodeWrapper != null)
+                    NodeWrapper.Text = name;
+
                 Console.WriteLine($"test {name}");
 
                 if (LayoutFile != null)
                     Console.WriteLine($"LayoutFileN {name} {LayoutFile.PaneLookup.ContainsKey(name)}");
             }
+        }
+
+        private void UpdateGroupPaneReferences(GroupPane group, string oldName, string newName)
+        {
+            if (group == null || string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName) || oldName == newName)
+                return;
+
+            if (group.Panes != null)
+            {
+                for (int i = 0; i < group.Panes.Count; i++)
+                {
+                    if (group.Panes[i] == oldName)
+                        group.Panes[i] = newName;
+                }
+            }
+
+            if (group.Childern == null)
+                return;
+
+            foreach (var child in group.Childern)
+                UpdateGroupPaneReferences(child, oldName, newName);
         }
 
         [DisplayName("Parts Flag"), CategoryAttribute("Flags")]
@@ -1453,7 +1482,16 @@ namespace LayoutBXLYT
 
         public object Clone()
         {
-            return this.MemberwiseClone();
+            var cloned = (BxlytWindowContent)this.MemberwiseClone();
+            cloned.Material = cloned.Material?.Clone();
+            cloned.TexCoords = TexCoords?.Select(x => new TexCoord()
+            {
+                TopLeft = x.TopLeft,
+                TopRight = x.TopRight,
+                BottomLeft = x.BottomLeft,
+                BottomRight = x.BottomRight,
+            }).ToList() ?? new List<TexCoord>();
+            return cloned;
         }
 
         public BxlytWindowContent(BxlytHeader header) {
@@ -1533,7 +1571,9 @@ namespace LayoutBXLYT
 
         public object Clone()
         {
-            return this.MemberwiseClone();
+            var cloned = (BxlytWindowFrame)this.MemberwiseClone();
+            cloned.Material = cloned.Material?.Clone();
+            return cloned;
         }
 
         public BxlytWindowFrame()
@@ -2478,7 +2518,59 @@ namespace LayoutBXLYT
 
         public virtual BxlytMaterial Clone()
         {
-            return (BxlytMaterial)this.MemberwiseClone();
+            var cloned = (BxlytMaterial)this.MemberwiseClone();
+            cloned.NodeWrapper = null;
+
+            cloned.TextureMaps = CloneObjectArray(TextureMaps);
+            cloned.TextureTransforms = CloneObjectArray(TextureTransforms);
+            cloned.TevStages = CloneObjectArray(TevStages);
+            cloned.TexCoordGens = CloneObjectArray(TexCoordGens);
+            cloned.ProjTexGenParams = CloneObjectArray(ProjTexGenParams);
+
+            cloned.BlendMode = CloneReference(BlendMode);
+            cloned.BlendModeLogic = CloneReference(BlendModeLogic);
+            cloned.AlphaCompare = CloneReference(AlphaCompare);
+
+            cloned.animController = CloneMaterialAnimController(animController);
+            return cloned;
+        }
+
+        protected static T CloneReference<T>(T source) where T : class
+        {
+            if (source == null)
+                return null;
+
+            var memberwiseClone = typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic);
+            return (T)memberwiseClone.Invoke(source, null);
+        }
+
+        protected static T[] CloneObjectArray<T>(T[] source) where T : class
+        {
+            if (source == null)
+                return null;
+
+            var cloned = new T[source.Length];
+            for (int i = 0; i < source.Length; i++)
+                cloned[i] = CloneReference(source[i]);
+
+            return cloned;
+        }
+
+        private static MaterialAnimController CloneMaterialAnimController(MaterialAnimController source)
+        {
+            if (source == null)
+                return new MaterialAnimController();
+
+            var cloned = new MaterialAnimController();
+            foreach (var entry in source.MaterialColors)
+                cloned.MaterialColors[entry.Key] = entry.Value;
+            foreach (var entry in source.TexturePatterns)
+                cloned.TexturePatterns[entry.Key] = entry.Value;
+            foreach (var entry in source.TextureSRTS)
+                cloned.TextureSRTS[entry.Key] = entry.Value;
+            foreach (var entry in source.IndTextureSRTS)
+                cloned.IndTextureSRTS[entry.Key] = entry.Value;
+            return cloned;
         }
 
         public void RemoveNodeWrapper()
@@ -2818,7 +2910,19 @@ namespace LayoutBXLYT
     {
         public override string Signature { get; } = "grp1";
 
-        public string Name { get; set; }
+        private string name;
+
+        public string Name
+        {
+            get { return name; }
+            set
+            {
+                name = value;
+
+                if (NodeWrapper != null)
+                    NodeWrapper.Text = value;
+            }
+        }
 
         [Editor(@"System.Windows.Forms.Design.StringCollectionEditor," +
           "System.Design, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a",
@@ -2836,6 +2940,10 @@ namespace LayoutBXLYT
 
         [Browsable(false)]
         public GroupPane Parent { get; set; }
+
+        [Browsable(false)]
+        [JsonIgnore]
+        internal System.Windows.Forms.TreeNode NodeWrapper;
 
         public GroupPane() : base()
         {

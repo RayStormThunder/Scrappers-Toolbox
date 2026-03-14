@@ -13,7 +13,17 @@ namespace Toolbox.Library.Forms
     {
         public EventHandler OnNodeSelected;
 
-        public string GroupTarget = "";
+        private string groupTarget = "";
+        public string GroupTarget
+        {
+            get { return groupTarget; }
+            set
+            {
+                groupTarget = value ?? string.Empty;
+                PopulateTree();
+                Invalidate();
+            }
+        }
         public bool DisplayKeys = true;
 
         private STAnimation activeAnimation;
@@ -35,6 +45,7 @@ namespace Toolbox.Library.Forms
 
         private TreeView NodeTree;
         private Splitter splitter;
+        private static readonly Brush keyedRowBrush = new SolidBrush(Color.FromArgb(70, 160, 40, 40));
 
         private ImageList imgList = new ImageList();
 
@@ -85,7 +96,14 @@ namespace Toolbox.Library.Forms
 
         private void PopulateTree()
         {
-            if (ActiveAnimation == null || NodeTree == null || !DisplayKeys) return;
+            if (NodeTree == null)
+                return;
+
+            if (ActiveAnimation == null || !DisplayKeys)
+            {
+                NodeTree.Nodes.Clear();
+                return;
+            }
 
             NodeTree.Nodes.Clear();
             foreach (var group in ActiveAnimation.AnimGroups)
@@ -186,6 +204,10 @@ namespace Toolbox.Library.Forms
                         if (!track.HasKeys)
                             continue;
 
+                        // Mark rows that actually contain keyframes for the selected pane/animation context.
+                        e.Graphics.FillRectangle(keyedRowBrush,
+                            new Rectangle(margin + 20, barHeight + y, Math.Max(0, Width - margin - 40), lineHeight));
+
                         for (int i = 1; i < track.KeyFrames.Count; i++)
                         {
                             int l = Math.Max(-20, (int)((
@@ -228,6 +250,9 @@ namespace Toolbox.Library.Forms
 
                     if (node.IsVisible)
                         y += NodeTree.ItemHeight;
+
+                    if (node.Tag is STAnimationTrack)
+                        trackCount++;
                 }
             }
 

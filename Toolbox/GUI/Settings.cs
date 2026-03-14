@@ -228,7 +228,7 @@ namespace Toolbox
         {
             if (formThemeCB.SelectedIndex >= 0 && !IsStartup)
             {
-               var result = MessageBox.Show("Changing themes will require to restart the program. Do you want to restart now?", "Toolbox Settings", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+               var result = MessageBox.Show("Changing themes will require to restart the program. Do you want to restart now?", "Scrapper's Toolbox Settings", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
                FormThemes.ActivePreset =  (FormThemes.Preset)formThemeCB.SelectedItem;
 
@@ -701,7 +701,7 @@ namespace Toolbox
         }
 
         private void btnReset_Click(object sender, EventArgs e) {
-            var result = MessageBox.Show("Resetting the settings will require to restart the program. Do you want to restart now?", "Toolbox Settings", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var result = MessageBox.Show("Resetting the settings will require to restart the program. Do you want to restart now?", "Scrapper's Toolbox Settings", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (result == DialogResult.Yes)
             {
                 if (System.IO.File.Exists($"{Runtime.ExecutableDir}\\config.xml"))

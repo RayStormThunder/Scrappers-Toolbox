@@ -38,8 +38,6 @@ namespace LayoutBXLYT
 
         private LayoutEditor ParentEditor;
 
-        private List<BasePane> CopiedPanes = new List<BasePane>();
-
         private RenderableTex backgroundTex;
         public BxlytHeader LayoutFile;
         public List<BxlytHeader> LayoutFiles = new List<BxlytHeader>();
@@ -428,10 +426,62 @@ namespace LayoutBXLYT
             GL.End();
         }
 
+        private bool IsTextureRenderablePane(BasePane pane)
+        {
+            return pane is IPicturePane || pane is IWindowPane || pane is ITextPane;
+        }
+
+        private bool ShouldDrawPaneTexture(BasePane pane)
+        {
+            switch (Runtime.LayoutEditor.VisibilityMode)
+            {
+                case Runtime.LayoutEditor.TextureVisibilityMode.AlwaysVisible:
+                case Runtime.LayoutEditor.TextureVisibilityMode.PartialTransparency:
+                    return true;
+                case Runtime.LayoutEditor.TextureVisibilityMode.NeverVisible:
+                    return false;
+                default:
+                    // Keep legacy behavior in follow mode.
+                    return pane.Visible || pane.animController.Visibile;
+            }
+        }
+
+        private bool IsVisibleInFollowMode(BasePane pane)
+        {
+            return pane.Visible || pane.animController.Visibile;
+        }
+
+        private bool IsHiddenInFollowMode(BasePane pane, byte parentAlpha, bool parentAlphaInfluence)
+        {
+            if (!IsVisibleInFollowMode(pane))
+                return true;
+
+            byte alpha = pane.Alpha;
+            if (pane.animController.PaneVertexColors.ContainsKey(LVCTarget.PaneAlpha))
+                alpha = (byte)pane.animController.PaneVertexColors[LVCTarget.PaneAlpha];
+
+            byte effectiveAlpha = (byte)(parentAlpha == 255 ? alpha : (alpha * parentAlpha) / 255);
+            if (!parentAlphaInfluence)
+                effectiveAlpha = alpha;
+
+            return effectiveAlpha == 0;
+        }
+
+        private byte GetTextureVisibilityAlpha(BasePane pane, byte currentAlpha, bool hiddenInFollowMode)
+        {
+            if (Runtime.LayoutEditor.VisibilityMode == Runtime.LayoutEditor.TextureVisibilityMode.PartialTransparency &&
+                hiddenInFollowMode)
+                return (byte)(currentAlpha / 2);
+
+            return currentAlpha;
+        }
+
         private void RenderPanes(BxlytShader shader, BasePane pane, bool isRoot, byte parentAlpha, bool parentAlphaInfluence, BasePane partPane = null, int stage = 0)
         {
             if (!pane.DisplayInEditor)
                 return;
+
+            bool isTexturePane = IsTextureRenderablePane(pane);
 
             GL.PushMatrix();
 
@@ -472,31 +522,46 @@ namespace LayoutBXLYT
             GL.Translate(translate.X, translate.Y, 0);
             GL.Scale(scale.X, scale.Y, 1);
 
+            bool forceTextureVisibility = isTexturePane &&
+                (Runtime.LayoutEditor.VisibilityMode == Runtime.LayoutEditor.TextureVisibilityMode.AlwaysVisible ||
+                 Runtime.LayoutEditor.VisibilityMode == Runtime.LayoutEditor.TextureVisibilityMode.PartialTransparency);
+
             byte alpha = pane.Alpha;
-            if (pane.animController.PaneVertexColors.ContainsKey(LVCTarget.PaneAlpha))
+            if (forceTextureVisibility)
+                alpha = byte.MaxValue;
+            else if (pane.animController.PaneVertexColors.ContainsKey(LVCTarget.PaneAlpha))
                 alpha = (byte)pane.animController.PaneVertexColors[LVCTarget.PaneAlpha];
 
             byte effectiveAlpha = (byte)(parentAlpha == 255 ? alpha : (alpha * parentAlpha) / 255);
             if (!parentAlphaInfluence)
                 effectiveAlpha = alpha;
 
+            // Visibility override modes should not be suppressed by base/parent alpha state.
+            if (forceTextureVisibility)
+                effectiveAlpha = byte.MaxValue;
+
             parentAlphaInfluence = parentAlphaInfluence || pane.InfluenceAlpha;
 
             if (!isRoot)
             {
                 bool isSelected = SelectedPanes.Contains(pane);
+                bool drawTexture = !isTexturePane || ShouldDrawPaneTexture(pane);
+                bool hiddenInFollowMode = isTexturePane && IsHiddenInFollowMode(pane, parentAlpha, parentAlphaInfluence);
+                byte paneAlpha = isTexturePane ? GetTextureVisibilityAlpha(pane, effectiveAlpha, hiddenInFollowMode) : effectiveAlpha;
 
-                if (!pane.Visible && !pane.animController.Visibile)
+                if (!drawTexture)
+                    DrawDefaultPane(shader, pane, isSelected);
+                else if (!isTexturePane && !pane.Visible && !pane.animController.Visibile)
                     DrawDefaultPane(shader, pane, isSelected);
                 else if (pane is IPicturePane)
-                    BxlytToGL.DrawPictureBox(pane, Camera, GameWindow, effectiveAlpha, Textures, isSelected);
+                    BxlytToGL.DrawPictureBox(pane, Camera, GameWindow, paneAlpha, Textures, isSelected);
                 else if (pane is IWindowPane)
-                    BxlytToGL.DrawWindowPane(pane, Camera, GameWindow, effectiveAlpha, Textures, isSelected);
+                    BxlytToGL.DrawWindowPane(pane, Camera, GameWindow, paneAlpha, Textures, isSelected);
                 else if (pane is IBoundryPane)
                 {
                     shader.Enable();
                     shader.SetBasic(pane, Color.White);
-                    BxlytToGL.DrawBoundryPane(pane, GameWindow, effectiveAlpha, isSelected);
+                    BxlytToGL.DrawBoundryPane(pane, GameWindow, paneAlpha, isSelected);
                     shader.Disable();
                 }
                 else if (pane is ITextPane && Runtime.LayoutEditor.DisplayTextPane)
@@ -510,17 +575,17 @@ namespace LayoutBXLYT
                     }
 
                     if (bitmap != null)
-                        BxlytToGL.DrawTextbox(pane, Camera, GameWindow, bitmap, effectiveAlpha,
+                        BxlytToGL.DrawTextbox(pane, Camera, GameWindow, bitmap, paneAlpha,
                             Textures, SelectedPanes, textPane.RenderableFont == null, isSelected);
                     else
                         DrawDefaultPane(shader, pane, isSelected);
                 }
                 else if (pane is Cafe.SCR1)
-                    BxlytToGL.DrawScissorPane(pane, GameWindow, effectiveAlpha, isSelected);
+                    BxlytToGL.DrawScissorPane(pane, GameWindow, paneAlpha, isSelected);
                 else if (pane is Cafe.ALI1)
-                    BxlytToGL.DrawAlignmentPane(pane, GameWindow, effectiveAlpha, isSelected);
+                    BxlytToGL.DrawAlignmentPane(pane, GameWindow, paneAlpha, isSelected);
                 else if (pane is Cafe.PRT1)
-                    DrawPartsPane(shader, (Cafe.PRT1)pane, effectiveAlpha, isSelected, parentAlphaInfluence);
+                    DrawPartsPane(shader, (Cafe.PRT1)pane, paneAlpha, isSelected, parentAlphaInfluence);
                 else
                     DrawDefaultPane(shader, pane, isSelected);
             }
@@ -844,28 +909,28 @@ namespace LayoutBXLYT
 
                 //Add a content menu 
                 var selectOverlapping = new STToolStripItem("Select Overlapping");
-                var createPanes = new STToolStripItem("Create Pane");
-                createPanes.DropDownItems.Add(new STToolStripItem("Null Pane", CreateNullPaneAction));
-                createPanes.DropDownItems.Add(new STToolStripItem("Picture Pane", CreatePicturePaneAction));
-                createPanes.DropDownItems.Add(new STToolStripItem("Part Pane", CreatePartPaneAction));
-                createPanes.DropDownItems.Add(new STToolStripItem("Text Box Pane", CreateTextPaneAction));
-                createPanes.DropDownItems.Add(new STToolStripItem("Window Pane", CreateWindowPaneAction));
-                createPanes.DropDownItems.Add(new STToolStripItem("Boundry Pane", CreateBoundryPaneAction));
+                var addPanes = new STToolStripItem("Add Pane");
+                addPanes.DropDownItems.Add(new STToolStripItem("Null Pane", CreateNullPaneAction));
+                addPanes.DropDownItems.Add(new STToolStripItem("Picture Pane", CreatePicturePaneAction));
+                addPanes.DropDownItems.Add(new STToolStripItem("Text Pane", CreateTextPaneAction));
+                addPanes.DropDownItems.Add(new STToolStripItem("Window Pane", CreateWindowPaneAction));
+                addPanes.DropDownItems.Add(new STToolStripItem("Boundry Pane", CreateBoundryPaneAction));
+                addPanes.DropDownItems.Add(new STToolStripItem("Part Pane", CreatePartPaneAction) { Enabled = ParentEditor.SupportsPartPane() });
                 var hitPanes = GetHitPanes(LayoutFile.RootPane, coords.X, coords.Y, new List<BasePane>());
                 for (int i = 0; i < hitPanes.Count; i++)
                     selectOverlapping.DropDownItems.Add(
                         new STToolStripItem(hitPanes[i].Name, SelectOverlappingAction));
 
                 stContextMenuStrip1.Items.Clear();
-                stContextMenuStrip1.Items.Add(createPanes);
+                stContextMenuStrip1.Items.Add(addPanes);
                 stContextMenuStrip1.Items.Add(selectOverlapping);
                 stContextMenuStrip1.Items.Add(new STToolStripItem("Show All Hidden Panes", ShowAllPaneAction));
-                stContextMenuStrip1.Items.Add(new STToolStripItem("Paste (Experimental)", PastePaneAction) { Enabled = CopiedPanes.Count > 0 });
+                stContextMenuStrip1.Items.Add(new STToolStripItem("Paste Pane", PastePaneAction) { Enabled = ParentEditor.HasHierarchyCopiedPanes() });
 
                 if (SelectedPanes.Count > 0)
                 {
                     stContextMenuStrip1.Items.Add(new STToolStripSeparator());
-                    stContextMenuStrip1.Items.Add(new STToolStripItem("Copy (Experimental)", CopyPaneAction));
+                    stContextMenuStrip1.Items.Add(new STToolStripItem("Copy Pane", CopyPaneAction));
                     stContextMenuStrip1.Items.Add(new STToolStripItem("Edit Group"));
                     stContextMenuStrip1.Items.Add(new STToolStripItem("Delete Selected Panes", DeletePaneAction));
                     stContextMenuStrip1.Items.Add(new STToolStripItem("Hide Selected Panes", HidePaneAction));
@@ -917,35 +982,12 @@ namespace LayoutBXLYT
 
         private void CopyPaneAction(object sender, EventArgs e)
         {
-            CopyPanes();
+            ParentEditor.CopyPanesWithHierarchy(SelectedPanes);
         }
 
         private void PastePaneAction(object sender, EventArgs e)
         {
-            PastePanes();
-        }
-
-        private void CopyPanes()
-        {
-            CopiedPanes.Clear();
-            foreach (var pane in SelectedPanes) {
-                BasePane copiedPane = (BasePane)pane.Clone();
-                CopiedPanes.Add(copiedPane);
-            }
-        }
-
-        private void PastePanes()
-        {
-            SelectedPanes.Clear();
-            foreach (var copiedPane in CopiedPanes)
-            {
-                //Copy again as the user may paste the same one multiple times
-                //This will make sure it's a completely new instance
-                BasePane pane = (BasePane)copiedPane.Clone();
-                ParentEditor.AddNewPastedPane(pane);
-                SelectedPanes.Add(pane);
-            }
-
+            ParentEditor.PastePanesWithHierarchy(SelectedPanes.FirstOrDefault());
             glControl1.Invalidate();
         }
 
@@ -1460,12 +1502,12 @@ namespace LayoutBXLYT
             }
             else if (e.Control && e.KeyCode == Keys.C) // Ctrl + C copy
             {
-                CopyPanes();
+                ParentEditor.CopyPanesWithHierarchy(SelectedPanes);
                 glControl1.Invalidate();
             }
             else if (e.Control && e.KeyCode == Keys.V) // Ctrl + V paste
             {
-                PastePanes();
+                ParentEditor.PastePanesWithHierarchy(SelectedPanes.FirstOrDefault());
                 glControl1.Invalidate();
             }
             else if (e.Control && e.KeyCode == Keys.A) // Ctrl + A select all

@@ -57,8 +57,12 @@ namespace LayoutBXLYT
         public LayoutEditor()
         {
             InitializeComponent();
+            ApplyExecutableIcon();
 
-            Text = $"Switch Toolbox Layout Editor";
+            dockContentDeserializer = new DeserializeDockContent(GetContentFromPersistString);
+            this.FormClosing += LayoutEditor_FormClosing;
+
+            Text = $"Scrapper's Toolbox Layout Editor";
 
             chkAutoKey.Enabled = false;
             chkAutoKey.ForeColor = FormThemes.BaseTheme.FormForeColor;
@@ -86,10 +90,24 @@ namespace LayoutBXLYT
             editorModeCB.Items.Add("Animation");
             editorModeCB.SelectedIndex = 0;
 
+            multiclickBehaviorCB.Items.Add("Absolute");
+            multiclickBehaviorCB.Items.Add("Relative");
+            multiclickBehaviorCB.SelectedIndex = (int)Runtime.LayoutEditor.MulticlickBehavior;
+
+            var addBoundryPaneItem = new ToolStripMenuItem("Add Boundry Pane");
+            addBoundryPaneItem.Click += addBoundryPaneToolStripMenuItem_Click;
+            panesToolStripMenuItem.DropDownItems.Insert(4, addBoundryPaneItem);
+
             foreach (var type in Enum.GetValues(typeof(Runtime.LayoutEditor.DebugShading)).Cast<Runtime.LayoutEditor.DebugShading>())
                 debugShading.Items.Add(type);
 
+            visibilityModeCB.Items.Add("Always Visible");
+            visibilityModeCB.Items.Add("Partial Transparency");
+            visibilityModeCB.Items.Add("Follows Animation");
+            visibilityModeCB.Items.Add("Never Visibile");
+
             debugShading.SelectedItem = Runtime.LayoutEditor.Shading;
+            visibilityModeCB.SelectedIndex = (int)Runtime.LayoutEditor.VisibilityMode;
             displayNullPanesToolStripMenuItem.Checked = Runtime.LayoutEditor.DisplayNullPane;
             displayyBoundryPanesToolStripMenuItem.Checked = Runtime.LayoutEditor.DisplayBoundryPane;
             displayPicturePanesToolStripMenuItem.Checked = Runtime.LayoutEditor.DisplayPicturePane;
@@ -115,6 +133,20 @@ namespace LayoutBXLYT
                 viewportBackColorCB.SelectedIndex = 0;
         }
 
+        private void ApplyExecutableIcon()
+        {
+            try
+            {
+                var exeIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (exeIcon != null)
+                    this.Icon = (Icon)exeIcon.Clone();
+            }
+            catch
+            {
+                // Keep designer-assigned icon if executable icon cannot be loaded.
+            }
+        }
+
         private List<LayoutViewer> Viewports = new List<LayoutViewer>();
         private LayoutAnimEditor LayoutAnimEditor;
         private LayoutViewer ActiveViewport;
@@ -127,11 +159,20 @@ namespace LayoutBXLYT
         private STAnimationPanel AnimationPanel;
         private PaneEditor LayoutPaneEditor;
         private LytAnimationWindow AnimationWindow;
+        private readonly DeserializeDockContent dockContentDeserializer;
+        private readonly HashSet<DockContent> dockLayoutTrackedContents = new HashSet<DockContent>();
+        private bool isClosingEditor = false;
+
+        private string DockLayoutDirectory => System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SkywardToolbox");
+
+        private string DockLayoutFilePath => System.IO.Path.Combine(DockLayoutDirectory, "LayoutEditorDockLayout.xml");
 
         private bool isLoaded = false;
         public void LoadBxlyt(BxlytHeader header)
         {
-            Text = $"Switch Toolbox Layout Editor [{header.FileName}]";
+            Text = $"Scrapper's Toolbox Layout Editor [{header.FileName}]";
             /*   if (PluginRuntime.BxfntFiles.Count > 0)
                {
                    var result = MessageBox.Show("Found font files opened. Would you like to save character images to disk? " +
@@ -165,6 +206,9 @@ namespace LayoutBXLYT
             //Update the saving for the layout
             ActiveLayout.FileInfo.CanSave = true;
 
+            if (!isLoaded)
+                InitializeDockPanels();
+
             LayoutViewer Viewport = new LayoutViewer(this, header, Textures);
             Viewport.DockContent = new DockContent();
             Viewport.DockContent.Text = header.FileName;
@@ -172,8 +216,17 @@ namespace LayoutBXLYT
             Viewport.Dock = DockStyle.Fill;
             Viewport.DockContent.Show(dockPanel1, DockState.Document);
             Viewport.DockContent.DockHandler.AllowEndUserDocking = false;
+            TrackDockContent(Viewport.DockContent);
             Viewports.Add(Viewport);
             ActiveViewport = Viewport;
+
+            // Apply current background settings now that a viewport exists.
+            UpdateBackColor();
+
+            if (isLoaded && AnimationPanel != null)
+                AnimationPanel.SetViewport(ActiveViewport.GetGLControl());
+            else if (!isLoaded)
+                ShowAnimationPanel();
 
             UpdateUndo();
             /*    if (ActiveViewport == null)
@@ -191,9 +244,6 @@ namespace LayoutBXLYT
                     ActiveViewport.LoadLayout(header);*/
 
             orthographicViewToolStripMenuItem.Checked = Runtime.LayoutEditor.UseOrthographicView;
-
-            if (!isLoaded)
-                InitializeDockPanels();
 
             LayoutAnimList?.SearchAnimations(header);
 
@@ -214,21 +264,248 @@ namespace LayoutBXLYT
 
             ShowAnimationHierarchy();
             ShowPropertiesPanel();
-            LayoutAnimList.LoadAnimation(ActiveAnimation);
+            RebuildAnimationHierarchyEntries();
 
             isLoaded = true;
         }
 
+        private void RebuildAnimationHierarchyEntries()
+        {
+            if (LayoutAnimList == null || LayoutAnimList.IsDisposed)
+                return;
+
+            var loadedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (ActiveLayout != null)
+                LayoutAnimList.SearchAnimations(ActiveLayout);
+
+            foreach (ListViewItem item in LayoutAnimList.GetAllAnimationItems())
+            {
+                string name = System.IO.Path.GetFileName(item.Text);
+                if (!string.IsNullOrEmpty(name))
+                    loadedNames.Add(name);
+            }
+
+            foreach (var animHeader in GetAllAnimationHeaders())
+            {
+                if (animHeader == null)
+                    continue;
+
+                string name = System.IO.Path.GetFileName(animHeader.FileName);
+                if (string.IsNullOrEmpty(name) || loadedNames.Contains(name))
+                    continue;
+
+                LayoutAnimList.LoadAnimation(animHeader);
+                loadedNames.Add(name);
+            }
+        }
+
         private void InitializeDockPanels(bool isAnimation = false)
         {
-            ShowAnimationHierarchy();
-            ShowTextureList();
-            ShowPartsEditor();
-            ShowPaneHierarchy();
-            ShowPropertiesPanel();
+            if (!TryLoadDockLayout())
+            {
+                ShowAnimationHierarchy();
+                ShowTextureList();
+                ShowPartsEditor();
+                ShowPaneHierarchy();
+                ShowPropertiesPanel();
+            }
+
+            EnsureCoreDockPanels();
+
             UpdateBackColor();
-            ShowAnimationPanel();
+            if (ActiveViewport != null)
+                ShowAnimationPanel();
+
+            TrackAllDockContents();
+            SaveDockLayout();
             UpdateMenuBar();
+        }
+
+        private void TrackAllDockContents()
+        {
+            if (dockPanel1 == null || dockPanel1.IsDisposed)
+                return;
+
+            foreach (var dockContent in dockPanel1.Contents.OfType<DockContent>())
+                TrackDockContent(dockContent);
+        }
+
+        private void TrackDockContent(DockContent dockContent)
+        {
+            if (dockContent == null || dockContent.IsDisposed)
+                return;
+
+            if (!dockLayoutTrackedContents.Add(dockContent))
+                return;
+
+            dockContent.DockStateChanged += DockContent_DockStateChanged;
+            dockContent.FormClosed += DockContent_FormClosed;
+        }
+
+        private void DockContent_DockStateChanged(object sender, EventArgs e)
+        {
+            if (!isClosingEditor)
+                SaveDockLayout();
+        }
+
+        private void DockContent_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            var dockContent = sender as DockContent;
+            if (dockContent == null)
+                return;
+
+            dockContent.DockStateChanged -= DockContent_DockStateChanged;
+            dockContent.FormClosed -= DockContent_FormClosed;
+            dockLayoutTrackedContents.Remove(dockContent);
+        }
+
+        private void EnsureCoreDockPanels()
+        {
+            if (!ControlIsActive(LayoutAnimList))
+                ShowAnimationHierarchy();
+
+            if (!ControlIsActive(LayoutTextureList))
+                ShowTextureList();
+
+            if (!ControlIsActive(LayoutPartsEditor))
+                ShowPartsEditor();
+
+            if (!ControlIsActive(LayoutHierarchy))
+                ShowPaneHierarchy();
+
+            if (!ControlIsActive(LayoutPaneEditor))
+                ShowPropertiesPanel();
+        }
+
+        private bool TryLoadDockLayout()
+        {
+            try
+            {
+                if (!System.IO.Directory.Exists(DockLayoutDirectory))
+                    return false;
+
+                if (!System.IO.File.Exists(DockLayoutFilePath))
+                    return false;
+
+                dockPanel1.LoadFromXml(DockLayoutFilePath, dockContentDeserializer);
+
+                // Remove temporary stubs used to satisfy generic DockContent entries.
+                foreach (var dockContent in dockPanel1.Contents.OfType<DockContent>().ToList())
+                {
+                    if (dockContent.Tag as string == "LayoutStub")
+                        dockContent.Close();
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool HasPersistedDockPanels()
+        {
+            return dockPanel1.Contents
+                .OfType<DockContent>()
+                .Any(x => x.GetType() != typeof(DockContent));
+        }
+
+        private void SaveDockLayout()
+        {
+            try
+            {
+                if (dockPanel1 == null || dockPanel1.IsDisposed)
+                    return;
+
+                if (dockPanel1.Contents == null || dockPanel1.Contents.Count == 0)
+                    return;
+
+                if (!System.IO.Directory.Exists(DockLayoutDirectory))
+                    System.IO.Directory.CreateDirectory(DockLayoutDirectory);
+
+                dockPanel1.SaveAsXml(DockLayoutFilePath);
+            }
+            catch
+            {
+            }
+        }
+
+        public void PersistWorkspaceLayout()
+        {
+            SaveDockLayoutForClose();
+        }
+
+        private void SaveDockLayoutForClose()
+        {
+            isClosingEditor = true;
+            TrackAllDockContents();
+            SaveDockLayout();
+        }
+
+        private IDockContent GetContentFromPersistString(string persistString)
+        {
+            if (persistString.Contains(typeof(DockContent).ToString()))
+            {
+                // Document/timeline placeholders from previous session.
+                return new DockContent() { Tag = "LayoutStub" };
+            }
+
+            if (persistString.Contains(typeof(LayoutAnimList).ToString()))
+            {
+                if (LayoutAnimList == null || LayoutAnimList.IsDisposed)
+                {
+                    LayoutAnimList = new LayoutAnimList(this, ObjectSelected);
+                    LayoutAnimList.Text = "Animation Hierarchy";
+                }
+                return LayoutAnimList;
+            }
+            if (persistString.Contains(typeof(LayoutHierarchy).ToString()))
+            {
+                if (LayoutHierarchy == null || LayoutHierarchy.IsDisposed)
+                {
+                    LayoutHierarchy = new LayoutHierarchy(this);
+                    LayoutHierarchy.Text = "Hierarchy";
+                }
+                if (ActiveLayout != null)
+                    LayoutHierarchy.LoadLayout(ActiveLayout, ObjectSelected);
+
+                return LayoutHierarchy;
+            }
+            if (persistString.Contains(typeof(LayoutTextureList).ToString()))
+            {
+                if (LayoutTextureList == null || LayoutTextureList.IsDisposed)
+                {
+                    LayoutTextureList = new LayoutTextureList();
+                    LayoutTextureList.Text = "Texture List";
+                }
+                if (ActiveLayout != null)
+                    LayoutTextureList.LoadTextures(this, ActiveLayout, Textures);
+
+                return LayoutTextureList;
+            }
+            if (persistString.Contains(typeof(LayoutPartsEditor).ToString()))
+            {
+                if (LayoutPartsEditor == null || LayoutPartsEditor.IsDisposed)
+                {
+                    LayoutPartsEditor = new LayoutPartsEditor();
+                    LayoutPartsEditor.Text = "Parts Editor";
+                }
+                return LayoutPartsEditor;
+            }
+            if (persistString.Contains(typeof(PaneEditor).ToString()))
+            {
+                if (LayoutPaneEditor == null || LayoutPaneEditor.IsDisposed)
+                {
+                    LayoutPaneEditor = new PaneEditor();
+                    LayoutPaneEditor.Text = "Properties";
+                    LayoutPaneEditor.PropertyChanged += OnPanePropertyChanged;
+                }
+                return LayoutPaneEditor;
+            }
+
+            return null;
         }
 
         private void ResetEditors()
@@ -249,7 +526,7 @@ namespace LayoutBXLYT
         {
             if (!isLoaded) return;
 
-            Text = $"Switch Toolbox Layout Editor [{activeLayout.FileName}]";
+            Text = $"Scrapper's Toolbox Layout Editor [{activeLayout.FileName}]";
 
             if (LayoutProperties != null)
                 LayoutProperties.Reset();
@@ -300,8 +577,16 @@ namespace LayoutBXLYT
                     {
                         AnimationPanel?.Reset();
                         foreach (ListViewItem item in LayoutAnimList.GetSelectedAnimations)
+                        {
                             if (item.Tag is BxlanHeader)
+                            {
+                                ActiveAnimation = (BxlanHeader)item.Tag;
                                 UpdateAnimationPlayer((BxlanHeader)item.Tag);
+                            }
+                        }
+
+                        if (Runtime.LayoutEditor.AnimationEditMode && LayoutPaneEditor != null)
+                            LayoutPaneEditor.ReloadEditor();
                     }
                 }
             }
@@ -348,7 +633,94 @@ namespace LayoutBXLYT
         {
             if (AnimationPanel == null) return;
 
+            UpdateAnimationPanelContext();
+        }
 
+        private void UpdateAnimationPanelContext()
+        {
+            if (AnimationPanel == null || AnimationPanel.IsDisposed)
+                return;
+
+            string paneName = null;
+            var selectedPane = SelectedPanes?.FirstOrDefault();
+            if (selectedPane != null)
+                paneName = selectedPane.Name;
+
+            string animationName = ActiveAnimation?.FileName;
+            AnimationPanel.SetTimelineContext(paneName, animationName);
+        }
+
+
+        public BxlanHeader GetActiveAnimation()
+        {
+            return ActiveAnimation;
+        }
+
+        public List<BxlanHeader> GetAllAnimationHeaders()
+        {
+            var order = new List<string>();
+            var map = new Dictionary<string, BxlanHeader>();
+
+            Action<BxlanHeader> addOrUpdate = (header) =>
+            {
+                if (header == null)
+                    return;
+
+                string key = GetAnimationHeaderKey(header);
+                if (!map.ContainsKey(key))
+                    order.Add(key);
+
+                // Prefer the newest discovered instance for this file key.
+                map[key] = header;
+            };
+
+            foreach (var anim in AnimationFiles)
+                addOrUpdate(anim);
+
+            if (LayoutAnimList != null && !LayoutAnimList.IsDisposed)
+            {
+                foreach (var item in LayoutAnimList.GetAllAnimationItems())
+                {
+                    if (item.Tag is ArchiveFileInfo)
+                        UpdateAnimationNode(item);
+
+                    if (item.Tag is BxlanHeader header)
+                        addOrUpdate(header);
+                }
+            }
+
+            foreach (var anim in SelectedAnimations)
+                addOrUpdate(anim);
+
+            addOrUpdate(ActiveAnimation);
+
+            var result = new List<BxlanHeader>();
+            foreach (var key in order)
+                result.Add(map[key]);
+
+            return result;
+        }
+
+        private string GetAnimationHeaderKey(BxlanHeader header)
+        {
+            if (header == null)
+                return string.Empty;
+
+            string filePath = header.FileInfo?.FilePath;
+            if (!string.IsNullOrEmpty(filePath))
+                return filePath.ToLowerInvariant();
+
+            if (!string.IsNullOrEmpty(header.FileName))
+                return header.FileName.ToLowerInvariant();
+
+            return header.GetHashCode().ToString();
+        }
+
+        public float GetCurrentAnimationFrame()
+        {
+            if (AnimationPanel == null)
+                return 0;
+            return AnimationPanel.CurrentFrame;
         }
 
         public void UpdateViewport() {
@@ -387,6 +759,8 @@ namespace LayoutBXLYT
 
             if (AnimationWindow != null && !AnimationWindow.Disposing && !AnimationWindow.IsDisposed)
                 AnimationWindow.LoadPane(pane, this);
+
+            UpdateAnimationPanelContext();
         }
 
         public void RefreshEditors()
@@ -426,7 +800,10 @@ namespace LayoutBXLYT
         private void ToggleChildern(TreeNode node, bool isChecked)
         {
             if (node.Tag is BasePane)
+            {
                 ((BasePane)node.Tag).DisplayInEditor = isChecked;
+                ((BasePane)node.Tag).Visible = isChecked;
+            }
 
             node.Checked = isChecked;
             foreach (TreeNode child in node.Nodes)
@@ -439,7 +816,9 @@ namespace LayoutBXLYT
 
             if (ActiveLayout != null)
             {
+                ActiveAnimation = animHeader;
                 AnimationPanel.AddAnimation(animHeader.ToGenericAnimation(ActiveLayout), false);
+                UpdateAnimationPanelContext();
                 //   foreach (var anim in AnimationFiles)
                 //     AnimationPanel.AddAnimation(anim.ToGenericAnimation(ActiveLayout), false);
             }
@@ -462,6 +841,8 @@ namespace LayoutBXLYT
             LayoutPartsEditor = new LayoutPartsEditor();
             LayoutPartsEditor.Text = "Parts Editor";
             LayoutPartsEditor.Show(dockPanel1, DockState.DockLeft);
+            TrackDockContent(LayoutPartsEditor as DockContent);
+            SaveDockLayout();
         }
 
         public void ShowBxlanEditor(BxlanHeader bxlan)
@@ -509,6 +890,10 @@ namespace LayoutBXLYT
             else
                 LayoutPaneEditor.Show(dockPanel1, DockState.DockRight);
 
+            TrackDockContent(LayoutPaneEditor as DockContent);
+
+            SaveDockLayout();
+
             /*     if (LayoutProperties != null)
                      return;
 
@@ -533,11 +918,17 @@ namespace LayoutBXLYT
         public void ShowAnimationHierarchy()
         {
             if (LayoutAnimList != null && !LayoutAnimList.IsDisposed)
+            {
+                RebuildAnimationHierarchyEntries();
                 return;
+            }
 
             LayoutAnimList = new LayoutAnimList(this, ObjectSelected);
             LayoutAnimList.Text = "Animation Hierarchy";
             LayoutAnimList.Show(dockPanel1, DockState.DockLeft);
+            TrackDockContent(LayoutAnimList as DockContent);
+            RebuildAnimationHierarchyEntries();
+            SaveDockLayout();
         }
 
         private void ShowPaneHierarchy()
@@ -549,6 +940,8 @@ namespace LayoutBXLYT
             LayoutHierarchy.Text = "Hierarchy";
             LayoutHierarchy.LoadLayout(ActiveLayout, ObjectSelected);
             LayoutHierarchy.Show(dockPanel1, DockState.DockLeft);
+            TrackDockContent(LayoutHierarchy as DockContent);
+            SaveDockLayout();
         }
 
         private void ShowTextureList()
@@ -560,21 +953,36 @@ namespace LayoutBXLYT
             LayoutTextureList.Text = "Texture List";
             LayoutTextureList.LoadTextures(this, ActiveLayout, Textures);
             LayoutTextureList.Show(dockPanel1, DockState.DockRight);
+            TrackDockContent(LayoutTextureList as DockContent);
+            SaveDockLayout();
         }
 
         public void ShowAnimationPanel()
         {
+            if (AnimationPanel != null && !AnimationPanel.IsDisposed)
+                return;
+
             DockContent dockContent = new DockContent();
+            dockContent.Text = "Timeline";
+            dockContent.TabText = "Timeline";
             AnimationPanel = new STAnimationPanel();
             AnimationPanel.Dock = DockStyle.Fill;
             AnimationPanel.AnimationPlaying += OnAnimationPlaying;
-            AnimationPanel.SetViewport(ActiveViewport.GetGLControl());
+            UpdateAnimationPanelContext();
+
+            if (ActiveViewport != null)
+                AnimationPanel.SetViewport(ActiveViewport.GetGLControl());
+
             dockContent.Controls.Add(AnimationPanel);
 
             if (ActiveViewport != null)
                 dockContent.Show(ActiveViewport.Pane, DockAlignment.Bottom, 0.2);
             else
                 dockContent.Show(dockPanel1, DockState.DockBottom);
+
+            TrackDockContent(dockContent);
+
+            SaveDockLayout();
         }
 
         public void UpdateHiearchyTree()
@@ -582,9 +990,111 @@ namespace LayoutBXLYT
             LayoutHierarchy?.UpdateTree();
         }
 
+        public void ReloadHiearchyTree()
+        {
+            LayoutHierarchy?.LoadLayout(ActiveLayout, ObjectSelected);
+        }
+
+        public LayoutHierarchy.HierarchyState CaptureHierarchyViewState()
+        {
+            return LayoutHierarchy?.GetStateSnapshot();
+        }
+
+        public void RestoreHierarchyViewState(LayoutHierarchy.HierarchyState state)
+        {
+            LayoutHierarchy?.ApplyStateSnapshot(state);
+        }
+
+        public bool HasHierarchyCopiedPanes()
+        {
+            return LayoutHierarchy != null && !LayoutHierarchy.IsDisposed && LayoutHierarchy.HasCopiedPanes;
+        }
+
+        public void CopyPanesWithHierarchy(List<BasePane> panes)
+        {
+            if (LayoutHierarchy == null || LayoutHierarchy.IsDisposed)
+                ShowPaneHierarchy();
+
+            LayoutHierarchy?.CopyPanesFromSelection(panes);
+        }
+
+        public void PastePanesWithHierarchy(BasePane sourcePane)
+        {
+            if (LayoutHierarchy == null || LayoutHierarchy.IsDisposed)
+                ShowPaneHierarchy();
+
+            LayoutHierarchy?.PastePanesFromViewer(sourcePane);
+        }
+
         public void UpdateLayoutTextureList()
         {
             LayoutTextureList?.LoadTextures(this, ActiveLayout, Textures);
+        }
+
+        private LayoutTextureList GetTextureListController()
+        {
+            if (LayoutTextureList == null || LayoutTextureList.IsDisposed)
+            {
+                LayoutTextureList = new LayoutTextureList();
+                LayoutTextureList.Text = "Texture List";
+            }
+
+            if (ActiveLayout != null)
+                LayoutTextureList.LoadTextures(this, ActiveLayout, Textures);
+
+            return LayoutTextureList;
+        }
+
+        public void AddTextureFromTextureListWorkflow()
+        {
+            GetTextureListController()?.ExecuteAddTextureWorkflow();
+        }
+
+        public void EditTextureFromTextureListWorkflow(string textureName)
+        {
+            GetTextureListController()?.ExecuteEditTextureWorkflow(textureName);
+        }
+
+        public void RemoveTextureFromTextureListWorkflow(string textureName)
+        {
+            GetTextureListController()?.ExecuteRemoveTextureWorkflow(new List<string>() { textureName });
+        }
+
+        public void DeletePanesAndRefresh(List<BasePane> panes)
+        {
+            if (ActiveLayout == null || ActiveViewport == null || panes == null)
+                return;
+
+            var selectedPanes = panes
+                .Where(x => x != null && x.Parent != null)
+                .Distinct()
+                .ToList();
+
+            if (selectedPanes.Count == 0)
+                return;
+
+            var deleteList = new List<BasePane>();
+            foreach (var pane in selectedPanes)
+                ExpandPaneChildren(deleteList, pane);
+
+            ActiveViewport.UndoManger.AddToUndo(new LayoutUndoManager.UndoActionPaneDelete(deleteList, ActiveLayout));
+            ActiveLayout.RemovePanes(deleteList, ActiveLayout.RootPane);
+
+            ActiveViewport.SelectedPanes.Clear();
+
+            UpdateHiearchyTree();
+            ActiveViewport.UpdateViewport();
+            UpdateUndo();
+        }
+
+        private void ExpandPaneChildren(List<BasePane> panes, BasePane parent)
+        {
+            if (parent == null || panes.Contains(parent))
+                return;
+
+            panes.Add(parent);
+            foreach (var child in parent.Childern)
+                ExpandPaneChildren(panes, child);
         }
 
         public void DeselectTextureList() {
@@ -613,6 +1123,15 @@ namespace LayoutBXLYT
 
         private void UpdateBackColor()
         {
+            if (ActiveViewport == null)
+            {
+                if (viewportBackColorCB.SelectedIndex == 0)
+                    backColorDisplay.BackColor = Color.FromArgb(130, 130, 130);
+                else
+                    backColorDisplay.BackColor = Runtime.LayoutEditor.BackgroundColor;
+                return;
+            }
+
             if (viewportBackColorCB.SelectedIndex == 0)
             {
                 ActiveViewport.UpdateBackgroundColor(Color.FromArgb(130, 130, 130));
@@ -934,6 +1453,23 @@ namespace LayoutBXLYT
                 ActiveViewport.UpdateViewport();
         }
 
+        private void visibilityModeCB_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (visibilityModeCB.SelectedIndex < 0) return;
+
+            Runtime.LayoutEditor.VisibilityMode = (Runtime.LayoutEditor.TextureVisibilityMode)visibilityModeCB.SelectedIndex;
+            ActiveViewport?.UpdateViewport();
+        }
+
+        private void multiclickBehaviorCB_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (multiclickBehaviorCB.SelectedIndex < 0)
+                return;
+
+            Runtime.LayoutEditor.MulticlickBehavior = (Runtime.LayoutEditor.MulticlickBehaviorMode)multiclickBehaviorCB.SelectedIndex;
+            Toolbox.Library.Config.Save();
+        }
+
         private void orthographicViewToolStripMenuItem_Click(object sender, EventArgs e) {
             ToggleOrthMode();
         }
@@ -1023,12 +1559,18 @@ namespace LayoutBXLYT
 
         private void LayoutEditor_FormClosed(object sender, FormClosedEventArgs e)
         {
+            SaveDockLayout();
             AnimationPanel?.OnControlClosing();
             GamePreviewWindow?.OnControlClosing();
             GamePreviewWindow?.Dispose();
             LayoutPaneEditor?.Close();
             LayoutAnimEditor?.Close();
             LayoutHierarchy?.Close();
+        }
+
+        private void LayoutEditor_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            SaveDockLayoutForClose();
         }
 
         private void undoToolStripMenuItem_Click(object sender, EventArgs e) {
@@ -1074,7 +1616,7 @@ namespace LayoutBXLYT
 
         #region Pane Adding
 
-        public BasePane AddNewTextPane()
+        public BasePane AddNewTextPane(BasePane parentPane = null)
         {
             NewTextboxDialog newTextDlg = new NewTextboxDialog();
             newTextDlg.LoadFonts(ActiveLayout.Fonts);
@@ -1093,7 +1635,7 @@ namespace LayoutBXLYT
 
                     pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
                     ((ITextPane)pane).MaterialIndex = (ushort)ActiveLayout.AddMaterial(((ITextPane)pane).Material);
-                    ActiveLayout.AddPane(pane, ActiveLayout.RootPane);
+                    ActiveLayout.AddPane(pane, parentPane ?? ActiveLayout.RootPane);
                 }
 
                 return pane;
@@ -1101,69 +1643,140 @@ namespace LayoutBXLYT
             else return null;
         }
 
-        public BasePane AddNewBoundryPane()
+        public BasePane AddNewBoundryPane(BasePane parentPane = null)
         {
             BasePane pane = ActiveLayout.CreateNewBoundryPane(RenamePane("B_bound"));
             if (pane != null)
             {
                 pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
-                ActiveLayout.AddPane(pane, ActiveLayout.RootPane);
+                ActiveLayout.AddPane(pane, parentPane ?? ActiveLayout.RootPane);
             }
 
             return pane;
         }
 
-        public BasePane AddNewWindowPane()
+        public BasePane AddNewWindowPane(BasePane parentPane = null)
         {
             BasePane pane = ActiveLayout.CreateNewWindowPane(RenamePane("W_window"));
             if (pane != null)
             {
                 pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
-                ActiveLayout.AddPane(pane, ActiveLayout.RootPane);
+                ActiveLayout.AddPane(pane, parentPane ?? ActiveLayout.RootPane);
             }
 
             return pane;
         }
 
-        public BasePane AddNewPicturePane()
+        public BasePane AddNewPicturePane(BasePane parentPane = null)
         {
             BasePane pane = ActiveLayout.CreateNewPicturePane(RenamePane("P_pict"));
             if (pane != null)
             {
                 pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
                 ((IPicturePane)pane).MaterialIndex = (ushort)ActiveLayout.AddMaterial(((IPicturePane)pane).Material);
-                ActiveLayout.AddPane(pane, ActiveLayout.RootPane);
+                ActiveLayout.AddPane(pane, parentPane ?? ActiveLayout.RootPane);
             }
 
             return pane;
         }
 
-        public BasePane AddNewPartPane()
+        public BasePane AddNewPartPane(BasePane parentPane = null)
         {
+            if (!SupportsPartPane())
+            {
+                MessageBox.Show("Part Pane is not supported by the current layout format.",
+                    "Layout Editor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return null;
+            }
+
             BasePane pane = ActiveLayout.CreateNewPartPane(RenamePane("N_part")) as BasePane;
             if (pane != null)
             {
                 pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
-                ActiveLayout.AddPane(pane, ActiveLayout.RootPane);
+                ActiveLayout.AddPane(pane, parentPane ?? ActiveLayout.RootPane);
+            }
+
+            if (pane == null)
+            {
+                MessageBox.Show("Unable to create Part Pane for this layout.",
+                    "Layout Editor", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
             return pane;
         }
 
-        public BasePane AddNewNullPane()
+        public bool SupportsPartPane()
+        {
+            return ActiveLayout is LayoutBXLYT.Cafe.Header ||
+                   ActiveLayout is BCLYT.Header;
+        }
+
+        public BasePane AddNewNullPane(BasePane parentPane = null)
         {
             BasePane pane = ActiveLayout.CreateNewNullPane(RenamePane("N_null"));
             if (pane != null)
             {
                 pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
-                ActiveLayout.AddPane(pane, ActiveLayout.RootPane);
+                ActiveLayout.AddPane(pane, parentPane ?? ActiveLayout.RootPane);
             }
 
             return pane;
         }
 
-        public void AddNewPastedPane(BasePane pane)
+        public GroupPane AddNewGroup(GroupPane parentGroupOverride = null)
         {
+            if (ActiveLayout?.RootGroup == null)
+                return null;
+
+            var parentGroup = parentGroupOverride ?? ActiveLayout.RootGroup;
+            if (parentGroupOverride == null)
+            {
+                var selectedGroups = LayoutHierarchy?.GetSelectedGroups();
+                if (selectedGroups != null && selectedGroups.Count > 0)
+                {
+                    var selectedParent = selectedGroups.FirstOrDefault(x => x != null);
+                    if (selectedParent != null)
+                        parentGroup = selectedParent;
+                }
+            }
+
+            GroupPane group = null;
+            if (ActiveLayout.RootGroup != null)
+            {
+                try
+                {
+                    group = Activator.CreateInstance(ActiveLayout.RootGroup.GetType()) as GroupPane;
+                }
+                catch
+                {
+                    group = null;
+                }
+            }
+
+            if (group == null)
+                return null;
+
+            group.LayoutFile = ActiveLayout;
+            group.Name = RenameGroup("Group");
+            group.Parent = parentGroup;
+
+            if (SelectedPanes != null)
+            {
+                foreach (var pane in SelectedPanes)
+                {
+                    if (!group.Panes.Contains(pane.Name))
+                        group.Panes.Add(pane.Name);
+                }
+            }
+
+            parentGroup.Childern.Add(group);
+            return group;
+        }
+
+        public void AddNewPastedPane(BasePane pane, BasePane parentPane = null)
+        {
+            pane = ConvertPastedPaneToActiveType(pane);
+
             string name = pane.Name;
             string numberedEnd = pane.Name.Split('_').LastOrDefault().Replace("_", string.Empty);
             if (numberedEnd.All(char.IsDigit)) {
@@ -1196,7 +1809,46 @@ namespace LayoutBXLYT
             }
 
             pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
-            ActiveLayout.AddPane(pane, pane.Parent);
+            ActiveLayout.AddPane(pane, parentPane ?? pane.Parent ?? ActiveLayout.RootPane);
+        }
+
+        private BasePane ConvertPastedPaneToActiveType(BasePane pane)
+        {
+            if (pane == null || ActiveLayout == null)
+                return pane;
+
+            if (pane is IBoundryPane)
+            {
+                var convertedPane = ActiveLayout.CreateNewBoundryPane(pane.Name);
+                if (convertedPane != null && convertedPane.GetType() != pane.GetType())
+                {
+                    CopyBasePaneData(pane, convertedPane);
+                    return convertedPane;
+                }
+            }
+
+            return pane;
+        }
+
+        private void CopyBasePaneData(BasePane source, BasePane target)
+        {
+            target.Alpha = source.Alpha;
+            target.PaneMagFlags = source.PaneMagFlags;
+            target.UserDataInfo = source.UserDataInfo;
+            target.Visible = source.Visible;
+            target.InfluenceAlpha = source.InfluenceAlpha;
+            target.Translate = source.Translate;
+            target.Rotate = source.Rotate;
+            target.Scale = source.Scale;
+            target.Width = source.Width;
+            target.Height = source.Height;
+            target.originX = source.originX;
+            target.originY = source.originY;
+            target.ParentOriginX = source.ParentOriginX;
+            target.ParentOriginY = source.ParentOriginY;
+
+            if (source is IUserDataContainer && target is IUserDataContainer)
+                ((IUserDataContainer)target).UserData = ((IUserDataContainer)source).UserData;
         }
 
         private string RenamePane(string name)
@@ -1205,7 +1857,72 @@ namespace LayoutBXLYT
             return Utils.RenameDuplicateString(names, name, 0, 2);
         }
 
+        private string RenameGroup(string name)
+        {
+            var names = new List<string>();
+            GetGroupNames(ActiveLayout.RootGroup, names);
+            return Utils.RenameDuplicateString(names, name, 0, 2);
+        }
+
+        private void GetGroupNames(GroupPane group, List<string> names)
+        {
+            if (group == null)
+                return;
+
+            names.Add(group.Name);
+            foreach (var child in group.Childern)
+                GetGroupNames(child, names);
+        }
+
         #endregion
+
+        public void AddPaneAndRefresh(BasePane pane)
+        {
+            if (pane == null)
+                return;
+
+            // Update hierarchy tree + select it
+            UpdateHiearchyTree();
+            UpdateUndo();
+
+            // Make the new pane selected in the tree/view
+            try
+            {
+                UpdateHiearchyNodeSelection(pane);
+                LoadPaneEditorOnSelect(pane);
+            }
+            catch { }
+
+            ActiveViewport?.UpdateViewport();
+        }
+
+        public void AddGroupAndRefresh(GroupPane parentGroup = null)
+        {
+            var group = AddNewGroup(parentGroup);
+            if (group == null)
+                return;
+
+            LayoutHierarchy?.LoadLayout(ActiveLayout, ObjectSelected);
+            UpdateUndo();
+            ActiveViewport?.UpdateViewport();
+        }
+
+        public void DeleteGroupAndRefresh(GroupPane group)
+        {
+            if (group == null || group.Parent == null)
+                return;
+
+            var result = MessageBox.Show($"Delete group '{group.Name}' and all of its child groups?",
+                "Layout Editor", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result != DialogResult.Yes)
+                return;
+
+            group.Parent.Childern.Remove(group);
+
+            LayoutHierarchy?.LoadLayout(ActiveLayout, ObjectSelected);
+            UpdateUndo();
+            ActiveViewport?.UpdateViewport();
+        }
 
         private void transformChildrenToolStripMenuItem_Click(object sender, EventArgs e) {
             Runtime.LayoutEditor.TransformChidlren = transformChildrenToolStripMenuItem.Checked;
@@ -1253,7 +1970,7 @@ namespace LayoutBXLYT
             {
                 if (menu == showTimelineToolStripMenuItem) {
                     ShowAnimationPanel();
-                    LayoutAnimList.LoadAnimation(ActiveAnimation);
+                    RebuildAnimationHierarchyEntries();
                 }
                 if (menu == showPropertiesToolStripMenuItem)
                     ShowPropertiesPanel();
@@ -1302,6 +2019,8 @@ namespace LayoutBXLYT
 
         private void dockPanel1_ContentRemoved(object sender, DockContentEventArgs e) {
             UpdateMenuBar();
+            if (!isClosingEditor)
+                SaveDockLayout();
         }
 
         private void fileToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1311,7 +2030,66 @@ namespace LayoutBXLYT
 
         private void saveWorkspaceToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            SaveDockLayout();
+        }
 
+        private void addNullPaneToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var pane = AddNewNullPane();
+            AddPaneAndRefresh(pane);
+        }
+
+        private void addPicturePaneToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var pane = AddNewPicturePane();
+            AddPaneAndRefresh(pane);
+        }
+
+        private void addWindowPaneToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var pane = AddNewWindowPane();
+            AddPaneAndRefresh(pane);
+        }
+
+        private void addTextPaneToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var pane = AddNewTextPane();
+            AddPaneAndRefresh(pane);
+        }
+
+        private void addBoundryPaneToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var pane = AddNewBoundryPane();
+            AddPaneAndRefresh(pane);
+        }
+
+        private void addPaneToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (ActiveLayout == null)
+                return;
+
+            // If you have selected panes, add as child of the first selected pane
+            BasePane parent = null;
+            if (SelectedPanes != null && SelectedPanes.Count > 0)
+                parent = SelectedPanes[0];
+
+            // Default: add a null pane (pan1)
+            // Change this to AddNewPicturePane/AddNewTextPane/etc if your menu is for a specific type
+            var pane = ActiveLayout.CreateNewNullPane(RenamePane("N_null"));
+            if (pane != null)
+            {
+                pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);
+
+                // IMPORTANT: add to selected parent if present, else root
+                ActiveLayout.AddPane(pane, parent ?? ActiveLayout.RootPane);
+            }
+
+            AddPaneAndRefresh(pane);
+        }
+
+        private void addGroupToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            AddGroupAndRefresh();
         }
     }
 }

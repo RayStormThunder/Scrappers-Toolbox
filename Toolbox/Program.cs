@@ -62,6 +62,14 @@ namespace Toolbox
 
             MainForm.LoadConfig();
 
+            // Redirect standard console output/error to the in-app console control
+            try
+            {
+                Console.SetOut(new STConsoleWriter());
+                Console.SetError(new STConsoleWriter());
+            }
+            catch { }
+
             if (Toolbox.Library.Runtime.UseSingleInstance)
             {
                 SingleInstanceController controller = new SingleInstanceController();
@@ -72,6 +80,27 @@ namespace Toolbox
                 MainForm form = new MainForm();
                 form.OpenedFiles = Files;
                 Application.Run(form);
+            }
+        }
+
+        // A simple TextWriter that forwards Console output into the STConsole control.
+        private class STConsoleWriter : System.IO.TextWriter
+        {
+            public override System.Text.Encoding Encoding => System.Text.Encoding.UTF8;
+
+            public override void WriteLine(string value)
+            {
+                try
+                {
+                    Toolbox.Library.STConsole.WriteLine(value);
+                }
+                catch { }
+            }
+
+            public override void Write(char value)
+            {
+                // Buffer single-char writes into lines
+                try { Toolbox.Library.STConsole.WriteLine(value.ToString()); } catch { }
             }
         }
 

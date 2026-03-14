@@ -8,9 +8,11 @@ using Syroot.Maths;
 
 namespace LayoutBXLYT.Revolution
 {
-    public class PAN1 : BasePane
+    public class PAN1 : BasePane, IUserDataContainer
     {
         public override string Signature { get; } = "pan1";
+
+        public UserData UserData { get; set; }
 
         private byte _flags1;
 
@@ -59,6 +61,12 @@ namespace LayoutBXLYT.Revolution
         {
             base.LoadDefaults();
             UserDataInfo = "";
+            UserData = null;
+        }
+
+        public override UserData CreateUserData()
+        {
+            return new LayoutBXLYT.CTR.USD1();
         }
 
         enum OriginXRev : byte
@@ -89,6 +97,8 @@ namespace LayoutBXLYT.Revolution
             Scale = reader.ReadVec2SY();
             Width = reader.ReadSingle();
             Height = reader.ReadSingle();
+
+            UserData = null;
 
             originX = OriginXMap[(OriginXRev)(origin % 3)];
             originY = OriginYMap[(OriginYRev)(origin / 3)];

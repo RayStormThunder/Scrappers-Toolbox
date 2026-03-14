@@ -58,7 +58,7 @@ namespace FirstPlugin
             InitializeComponent();
             Reload();
 
-            xmlOldToolstrip = new STToolStipMenuItem("XML (Toolbox/Editorcore)", null, OnFormatChanged);
+            xmlOldToolstrip = new STToolStipMenuItem("XML (Scrapper's Toolbox/Editorcore)", null, OnFormatChanged);
             xmlToolstrip = new STToolStipMenuItem("XML (YamlConv)", null, OnFormatChanged);
             yamlToolstrip = new STToolStipMenuItem("YAML", null, OnFormatChanged);
 

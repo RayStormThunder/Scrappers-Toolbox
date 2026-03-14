@@ -130,8 +130,7 @@ namespace LayoutBXLYT.Cafe
 
         public override BxlytMaterial Clone()
         {
-            Material mat = new Material();
-            return mat;
+            return base.Clone();
         }
 
         public Material()

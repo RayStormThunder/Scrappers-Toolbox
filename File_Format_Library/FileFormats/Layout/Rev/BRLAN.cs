@@ -187,13 +187,13 @@ namespace LayoutBXLYT
                 }
 
                 //Write the total section count
-                using (writer.TemporarySeek(0x10, System.IO.SeekOrigin.Begin))
+                using (writer.TemporarySeek(0x0E, System.IO.SeekOrigin.Begin))
                 {
                     writer.Write((ushort)sectionCount);
                 }
 
                 //Write the total file size
-                using (writer.TemporarySeek(0x0C, System.IO.SeekOrigin.Begin))
+                using (writer.TemporarySeek(0x08, System.IO.SeekOrigin.Begin))
                 {
                     writer.Write((uint)writer.BaseStream.Length);
                 }
@@ -271,6 +271,13 @@ namespace LayoutBXLYT
                 Textures = new List<string>();
             }
 
+            public override BxlanPaiEntry AddEntry(string name, byte target)
+            {
+                var entry = new PaiEntry(name, target);
+                Entries.Add(entry);
+                return entry;
+            }
+
             public PAI1(FileReader reader, Header header)
             {
                 long startPos = reader.Position - 8;
@@ -284,10 +291,11 @@ namespace LayoutBXLYT
                 var numEntries = reader.ReadUInt16();
                 var entryOffsetTbl = reader.ReadUInt32();
 
+                long texStart = reader.Position;
                 var texOffsets = reader.ReadUInt32s(numTextures);
                 for (int i = 0; i < numTextures; i++)
                 {
-                    reader.SeekBegin(startPos + texOffsets[i]);
+                    reader.SeekBegin(texStart + texOffsets[i]);
                     Textures.Add(reader.ReadZeroTerminatedString());
                 }
 
@@ -318,9 +326,10 @@ namespace LayoutBXLYT
                     writer.Write(new uint[Textures.Count]);
                     for (int i = 0; i < Textures.Count; i++)
                     {
-                        writer.WriteUint32Offset(startOfsPos + (i * 4), startPos);
+                        writer.WriteUint32Offset(startOfsPos + (i * 4), startOfsPos);
                         writer.WriteString(Textures[i]);
                     }
+                    writer.Align(4);
                 }
                 if (Entries.Count > 0)
                 {
@@ -339,6 +348,19 @@ namespace LayoutBXLYT
 
         public class PaiEntry : BxlanPaiEntry
         {
+            public override BxlanPaiTag AddEntry(string tag)
+            {
+                var paiTag = new PaiTag(tag);
+                Tags.Add(paiTag);
+                return paiTag;
+            }
+
+            public PaiEntry(string name, byte target)
+            {
+                Name = name;
+                Target = (AnimationTarget)target;
+            }
+
             public PaiEntry(FileReader reader, Header header)
             {
                 long startPos = reader.Position;
@@ -370,7 +392,13 @@ namespace LayoutBXLYT
                     for (int i = 0; i < Tags.Count; i++)
                     {
                         writer.WriteUint32Offset(startPos + 24 + (i * 4), startPos);
-                        ((PaiTag)Tags[i]).Write(writer, header, Target);
+                        var paiTag = Tags[i] as PaiTag;
+                        if (paiTag == null)
+                        {
+                            paiTag = new PaiTag(Tags[i].Tag);
+                            paiTag.Entries.AddRange(Tags[i].Entries);
+                        }
+                        paiTag.Write(writer, header, Target);
                     }
                 }
             }
@@ -379,6 +407,11 @@ namespace LayoutBXLYT
         public class PaiTag : BxlanPaiTag
         {
             private uint Unknown { get; set; }
+
+            public PaiTag(string tag)
+            {
+                Tag = tag;
+            }
 
             public PaiTag(FileReader reader, Header header, AnimationTarget target)
             {

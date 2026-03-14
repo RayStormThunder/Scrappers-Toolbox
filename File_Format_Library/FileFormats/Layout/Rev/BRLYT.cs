@@ -318,6 +318,49 @@ namespace LayoutBXLYT
                     GetGroupChildren(panes, (GRP1)pane);
             }
 
+            public BasePane AddNewPane(BasePane parent, string signature, string name = "NewPane")
+            {
+                if (parent == null)
+                    parent = RootPane;
+
+                // Ensure children list exists
+                if (parent.Childern == null)
+                    parent.Childern = new List<BasePane>();
+
+                // Ensure lookup exists (usually does, but safe)
+                if (PaneLookup == null)
+                    PaneLookup = new Dictionary<string, BasePane>();
+
+                // Make name unique (important)
+                string baseName = name;
+                int suffix = 0;
+                while (PaneLookup.ContainsKey(name))
+                {
+                    suffix++;
+                    name = $"{baseName}_{suffix:D2}";
+                }
+
+                BasePane pane;
+                switch (signature)
+                {
+                    case "pan1": pane = new PAN1(this, name); break;
+                    case "pic1": pane = new PIC1(this, name); break;
+                    case "txt1": pane = new TXT1(this, name); break;
+                    case "wnd1": pane = new WND1(this, name); break;
+                    case "bnd1": pane = new BND1(this, name); break;
+                    default:     pane = new PAN1(this, name); break;
+                }
+
+                // Attach
+                parent.Childern.Add(pane);
+                pane.Parent = parent;
+
+                // Register so it can be found/saved properly
+                AddPaneToTable(pane);
+
+                return pane;
+            }
+
             public void Read(FileReader reader, BRLYT brlyt)
             {
                 PaneLookup.Clear();
@@ -448,6 +491,24 @@ namespace LayoutBXLYT
                             parentGroupPane = currentGroupPane.Parent;
                             break;
                         case "usd1":
+                            long dataPos = reader.Position;
+
+                            if (currentPane is IUserDataContainer)
+                            {
+                                var container = (IUserDataContainer)currentPane;
+                                try
+                                {
+                                    container.UserData = new LayoutBXLYT.CTR.USD1(reader, this);
+                                }
+                                catch
+                                {
+                                    // Fall back to payload preservation when parsing fails.
+                                    container.UserData = new LayoutBXLYT.CTR.USD1();
+                                }
+
+                                reader.SeekBegin(dataPos);
+                                container.UserData.Data = reader.ReadBytes((int)SectionSize - 8);
+                            }
                             break;
                         //If the section is not supported store the raw bytes
                         default:
@@ -535,8 +596,21 @@ namespace LayoutBXLYT
                 if (pane is IUserDataContainer && ((IUserDataContainer)pane).UserData != null)
                 {
                     var userData = ((IUserDataContainer)pane).UserData;
-                    WriteSection(writer, "usd1", userData, () => userData.Write(writer, this));
-                    sectionCount++;
+
+                    bool hasEntries = userData.Entries != null && userData.Entries.Count > 0;
+                    bool hasRawPayload = userData.Data != null && userData.Data.Length > 0;
+
+                    if (hasEntries || hasRawPayload)
+                    {
+                        WriteSection(writer, "usd1", userData, () =>
+                        {
+                            if (hasEntries)
+                                userData.Write(writer, this);
+                            else
+                                writer.Write(userData.Data);
+                        });
+                        sectionCount++;
+                    }
                 }
 
                 if (pane.HasChildern)

@@ -1,23 +1,27 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using Toolbox;
-using System.Windows.Forms;
 using Toolbox.Library;
 using Toolbox.Library.IO;
-using System.IO;
 
 namespace FirstPlugin
 {
     public class U8 : IArchiveFile, IFileFormat
     {
-        public FileType FileType { get; set; } = FileType.Archive;
+        private const uint U8Magic = 0x55AA382D;
+        private const uint RootNodeOffset = 0x20;
+        private const int DataAlignment = 0x20;
 
+        private int _dataAlignment = DataAlignment;
+        private byte[] _trailingData = new byte[0];
+
+        public FileType FileType { get; set; } = FileType.Archive;
         public bool CanSave { get; set; }
-        public string[] Description { get; set; } = new string[] { "U8" };
-        public string[] Extension { get; set; } = new string[] { "*.u8", "*.arc", "*.cmparc"};
+        public string[] Description { get; set; } = new[] { "U8" };
+        public string[] Extension { get; set; } = new[] { "*.u8", "*.cmparc" };
         public string FileName { get; set; }
         public string FilePath { get; set; }
         public IFileInfo IFileInfo { get; set; }
@@ -27,51 +31,77 @@ namespace FirstPlugin
         public bool CanReplaceFiles { get; set; }
         public bool CanDeleteFiles { get; set; }
 
-        private readonly uint BEMagic = 0x55AA382D;
-        private readonly uint LEMagic = 0x2D38AA55;
-        private int LZType = 0x0, LZSize = 0;
+        private int _lzType;
+        private int _lzSize;
+
+        public List<FileEntry> files = new List<FileEntry>();
+        public IEnumerable<ArchiveFileInfo> Files => files;
+
+        private class ParsedNode
+        {
+            public byte Type;
+            public uint NameOffset;
+            public uint DataOffset;
+            public uint DataLength;
+            public string Name;
+            public string FullPath;
+        }
+
+        private class DirectoryNode
+        {
+            public string Name;
+            public string FullPath;
+            public List<object> Children = new List<object>();
+            public Dictionary<string, DirectoryNode> DirectoryLookup = new Dictionary<string, DirectoryNode>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private class SaveNode
+        {
+            public byte Type;
+            public string Name;
+            public int ParentIndex;
+            public int EndIndex;
+            public int NameOffset;
+            public int DataOffset;
+            public int DataSize;
+            public byte[] Data;
+        }
 
         public bool Identify(Stream stream)
         {
             using (var reader = new FileReader(stream, true))
             {
                 reader.ByteOrder = Syroot.BinaryData.ByteOrder.BigEndian;
-                byte LZCheck = reader.ReadByte();
-                if (LZCheck == 0x11 || LZCheck == 0x10)
+                byte first = reader.ReadByte();
+                if (first == 0x10 || first == 0x11)
                 {
-                    LZType = LZCheck;
-
-                    // For the Wii's U8 ARC files compressed with LZ77 Type 10 or Type 11, the decompiled file size is written in little endian.
+                    _lzType = first;
                     reader.ByteOrder = Syroot.BinaryData.ByteOrder.LittleEndian;
-                    LZSize = reader.ReadInt32();
+                    _lzSize = reader.ReadInt32();
                     reader.ByteOrder = Syroot.BinaryData.ByteOrder.BigEndian;
                 }
                 else
                 {
+                    _lzType = 0;
+                    _lzSize = 0;
                     reader.Position = 0;
                 }
 
                 uint signature = reader.ReadUInt32();
-
                 reader.Position = 0;
-                return signature == BEMagic || signature == LEMagic;
+                return signature == U8Magic;
             }
         }
 
         public Type[] Types
         {
-            get
-            {
-                List<Type> types = new List<Type>();
-                return types.ToArray();
-            }
+            get { return new Type[0]; }
         }
 
-        public List<FileEntry> files = new List<FileEntry>();
-
-        public IEnumerable<ArchiveFileInfo> Files => files;
-
-        public void ClearFiles() { files.Clear(); }
+        public void ClearFiles()
+        {
+            files.Clear();
+        }
 
         public string Name
         {
@@ -79,197 +109,450 @@ namespace FirstPlugin
             set { FileName = value; }
         }
 
-
-        private bool IsBigEndian = false;
-
         public void Load(Stream stream)
         {
-            SubStream sub;
-            if (LZType == 0x11 || LZType == 0x10)
+            // Plain U8 files are safe to round-trip with the current writer.
+            // Wrapped variants (for example LZ-prefixed files) need wrapper-preserving
+            // save support to avoid changing output format.
+            CanSave = _lzType == 0;
+            IFileInfo.UseEditMenu = true;
+            CanAddFiles = true;
+            CanRenameFiles = true;
+            CanReplaceFiles = true;
+            CanDeleteFiles = true;
+            files.Clear();
+            _dataAlignment = DataAlignment;
+            _trailingData = new byte[0];
+
+            Stream dataStream;
+            if (_lzType == 0x11 || _lzType == 0x10)
             {
-                sub = new SubStream(stream, 4);
+                using (var sub = new SubStream(stream, 4))
+                {
+                    byte[] wrapped = sub.ToArray();
+                    dataStream = _lzType == 0x11
+                        ? new MemoryStream(LZ77_WII.Decompress11(wrapped, _lzSize))
+                        : new MemoryStream(LZ77_WII.Decompress10LZ(wrapped, _lzSize));
+                }
             }
             else
             {
-                sub = null;
+                dataStream = stream;
             }
 
-            Stream dataStream = 
-                LZType == 0x11 ? new MemoryStream(LZ77_WII.Decompress11(sub.ToArray(), LZSize)) : 
-                LZType == 0x10 ? new MemoryStream(LZ77_WII.Decompress10LZ(sub.ToArray(), LZSize)) : stream;
-            
             dataStream.Position = 0;
-
-            using (var reader = new FileReader(dataStream))
+            using (var reader = new FileReader(dataStream, true))
             {
                 reader.ByteOrder = Syroot.BinaryData.ByteOrder.BigEndian;
 
-                uint Signature = reader.ReadUInt32();
-                IsBigEndian = Signature == BEMagic;
+                uint magic = reader.ReadUInt32();
+                if (magic != U8Magic)
+                    throw new InvalidDataException("Invalid U8 magic.");
 
-                reader.SetByteOrder(IsBigEndian);
-                uint FirstNodeOffset = reader.ReadUInt32();
-                uint NodeSectionSize = reader.ReadUInt32();
-                uint FileDataOffset = reader.ReadUInt32();
-                byte[] Reserved = new byte[4];
+                uint entriesOffset = reader.ReadUInt32();
+                uint entriesLength = reader.ReadUInt32();
+                uint firstFileOffset = reader.ReadUInt32();
+                reader.ReadUInt32();
+                reader.ReadUInt32();
+                reader.ReadUInt32();
+                reader.ReadUInt32();
 
-                Console.WriteLine("FirstNodeOffset " + FirstNodeOffset);
+                reader.SeekBegin(entriesOffset);
+                ParsedNode root = ReadNode(reader);
+                if (root.Type != 1)
+                    throw new InvalidDataException("U8 root node is not a directory.");
 
-                reader.SeekBegin(FirstNodeOffset);
-                var RootNode = new NodeEntry();
-                RootNode.Read(reader);
-
-                //Root has total number of nodes 
-                uint TotalNodeCount = RootNode.Setting2;
-
-                //Read all our entries
-                List<NodeEntry> entries = new List<NodeEntry>();
-                entries.Add(RootNode);
-                for (int i = 0; i < TotalNodeCount - 1; i++)
+                int nodeCount = (int)root.DataLength;
+                var nodes = new List<ParsedNode>(nodeCount);
+                nodes.Add(root);
+                for (int i = 1; i < nodeCount; i++)
                 {
-                    var node = new NodeEntry();
-                    node.Read(reader);
-                    entries.Add(node);
+                    nodes.Add(ReadNode(reader));
                 }
 
-                //Read string pool
-                uint stringPoolPos = 0;
-                Dictionary<uint, string> StringTable = new Dictionary<uint, string>();
-                for (int i = 0; i < TotalNodeCount; i++)
+                uint stringTableStart = entriesOffset + (uint)(nodeCount * 12);
+                for (int i = 0; i < nodes.Count; i++)
                 {
-                    string str = reader.ReadString(Syroot.BinaryData.BinaryStringFormat.ZeroTerminated, Encoding.ASCII);
-                    StringTable.Add(stringPoolPos, str);
-                    stringPoolPos += (uint)str.Length + 1;
+                    reader.SeekBegin(stringTableStart + nodes[i].NameOffset);
+                    nodes[i].Name = reader.ReadString(Syroot.BinaryData.BinaryStringFormat.ZeroTerminated, Encoding.ASCII);
                 }
 
-                //Set the strings
-                for (int i = 0; i < TotalNodeCount; i++) {
-                    entries[i].Name = StringTable[entries[i].StringPoolOffset];
-                }
+                nodes[0].Name = string.Empty;
+                BuildFullPaths(nodes, 1, nodeCount, string.Empty);
 
-                entries[0].Name = "Root";
-
-                SetFileNames(entries, 1, entries.Count, "");
-
-                for (int i = 0; i < entries.Count; i++)
+                for (int i = 0; i < nodes.Count; i++)
                 {
-                    if (entries[i].nodeType != NodeEntry.NodeType.Directory)
+                    if (nodes[i].Type != 0)
+                        continue;
+
+                    reader.SeekBegin(nodes[i].DataOffset);
+                    files.Add(new FileEntry()
                     {
-                        FileEntry entry = new FileEntry();
-                        reader.SeekBegin(entries[i].Setting1);
-                        entry.FileData = reader.ReadBytes((int)entries[i].Setting2);
-                        entry.FileName = entries[i].FullPath;
-                        files.Add(entry);
-                    }
+                        FileName = nodes[i].FullPath,
+                        FileData = reader.ReadBytes((int)nodes[i].DataLength),
+                    });
+                }
+
+                // U8 data is canonically aligned to 0x20. Inferring from only the first
+                // file offset can overestimate (for example 0x80/0x100) and introduce
+                // unnecessary zero-filled gaps between files when saving.
+                _dataAlignment = DataAlignment;
+
+                int dataEnd = 0;
+                for (int i = 0; i < nodes.Count; i++)
+                {
+                    if (nodes[i].Type != 0)
+                        continue;
+
+                    long end = (long)nodes[i].DataOffset + nodes[i].DataLength;
+                    if (end > dataEnd)
+                        dataEnd = (int)end;
+                }
+
+                if (dataEnd < dataStream.Length)
+                {
+                    reader.SeekBegin(dataEnd);
+                    _trailingData = reader.ReadBytes((int)(dataStream.Length - dataEnd));
                 }
             }
         }
 
-        private int SetFileNames(List<NodeEntry> fileEntries, int firstIndex, int lastIndex, string directory)
+        private static ParsedNode ReadNode(FileReader reader)
         {
-            int currentIndex = firstIndex;
-            while (currentIndex < lastIndex)
+            byte type = reader.ReadByte();
+            uint nameOffset = (uint)((reader.ReadByte() << 16) | (reader.ReadByte() << 8) | reader.ReadByte());
+            uint dataOffset = reader.ReadUInt32();
+            uint dataLength = reader.ReadUInt32();
+            return new ParsedNode()
             {
-                NodeEntry entry = fileEntries[currentIndex];
-                string filename = entry.Name;
-                entry.FullPath = directory + filename;
+                Type = type,
+                NameOffset = nameOffset,
+                DataOffset = dataOffset,
+                DataLength = dataLength,
+            };
+        }
 
-                if (entry.nodeType == NodeEntry.NodeType.Directory)
+        private static int BuildFullPaths(List<ParsedNode> nodes, int firstIndex, int endIndex, string parentPath)
+        {
+            int index = firstIndex;
+            while (index < endIndex)
+            {
+                var node = nodes[index];
+                string nodePath = string.IsNullOrEmpty(parentPath) ? node.Name : parentPath + "/" + node.Name;
+
+                if (node.Type == 1)
                 {
-                    entry.FullPath += "/";
-                    currentIndex = SetFileNames(fileEntries, currentIndex + 1, (int)entry.Setting2, entry.FullPath);
+                    node.FullPath = nodePath + "/";
+                    nodes[index] = node;
+                    index = BuildFullPaths(nodes, index + 1, (int)node.DataLength, nodePath);
                 }
                 else
                 {
-                    ++currentIndex;
+                    node.FullPath = nodePath;
+                    nodes[index] = node;
+                    index++;
                 }
             }
-
-            return currentIndex;
-        }
-
-        public void SaveFile(FileWriter writer)
-        {
-            writer.SetByteOrder(IsBigEndian);
-
-            long pos = writer.Position;
-            writer.Write(BEMagic);
-        
-        }
-
-        public class FileEntry : ArchiveFileInfo
-        {
-            public NodeEntry nodeEntry;
-        }
-
-        public class DirectoryEntry : IDirectoryContainer
-        {
-            public NodeEntry nodeEntry;
-
-            public string Name { get; set; }
-
-            public IEnumerable<INode> Nodes { get { return nodes; } }
-            public List<INode> nodes = new List<INode>();
-
-            public void AddNode(INode node)
-            {
-                nodes.Add(node);
-            }
-        }
-
-        public class NodeEntry : INode
-        {
-            public string FullPath { get; set; }
-
-            public NodeType nodeType
-            {
-                get { return (NodeType)(flags >> 24); }
-            }
-
-            public enum NodeType
-            {
-                File,
-                Directory,
-            }
-
-            public uint StringPoolOffset
-            {
-                get { return flags & 0x00ffffff; }
-            }
-
-            private uint flags;
-
-            public uint Setting1; //Offset (file) or parent index (directory)
-            public uint Setting2; //Size (file) or node count (directory)
-
-            public string Name { get; set; }
-
-            public void Read(FileReader reader)
-            {
-                flags = reader.ReadUInt32();
-                Setting1 = reader.ReadUInt32();
-                Setting2 = reader.ReadUInt32();
-            }
+            return index;
         }
 
         public void Unload()
         {
-
         }
 
-        public void Save(System.IO.Stream stream)
+        private static string NormalizePath(string path)
         {
-            SaveFile(new FileWriter(stream));
+            if (string.IsNullOrEmpty(path))
+                return string.Empty;
+
+            return path.Replace('\\', '/').Trim('/');
+        }
+
+        private static int Align(int value, int alignment)
+        {
+            int mod = value % alignment;
+            return mod == 0 ? value : value + (alignment - mod);
+        }
+
+        private static byte[] GetEntryData(FileEntry entry)
+        {
+            if (entry.FileDataStream != null)
+            {
+                using (var ms = new MemoryStream())
+                {
+                    entry.FileDataStream.Position = 0;
+                    entry.FileDataStream.CopyTo(ms);
+                    return ms.ToArray();
+                }
+            }
+
+            return entry.FileData ?? new byte[0];
+        }
+
+        private static bool ShouldSaveAttachedFormat(FileEntry entry)
+        {
+            var format = entry?.FileFormat;
+            return format != null && format.CanSave;
+        }
+
+        private static DirectoryNode GetOrCreateDirectory(DirectoryNode current, string name)
+        {
+            if (current.DirectoryLookup.TryGetValue(name, out DirectoryNode existing))
+                return existing;
+
+            string fullPath = string.IsNullOrEmpty(current.FullPath) ? name : current.FullPath + "/" + name;
+            var next = new DirectoryNode()
+            {
+                Name = name,
+                FullPath = fullPath,
+            };
+            current.DirectoryLookup.Add(name, next);
+            current.Children.Add(next);
+            return next;
+        }
+
+        private static int FlattenDirectory(DirectoryNode directory, int parentIndex, List<SaveNode> output)
+        {
+            int index = output.Count;
+            output.Add(new SaveNode()
+            {
+                Type = 1,
+                Name = directory.Name,
+                ParentIndex = parentIndex,
+            });
+
+            for (int i = 0; i < directory.Children.Count; i++)
+            {
+                if (directory.Children[i] is DirectoryNode childDirectory)
+                {
+                    FlattenDirectory(childDirectory, index, output);
+                }
+                else if (directory.Children[i] is FileEntry fileEntry)
+                {
+                    string normalized = NormalizePath(fileEntry.FileName);
+                    int slash = normalized.LastIndexOf('/');
+                    string fileName = slash >= 0 ? normalized.Substring(slash + 1) : normalized;
+
+                    output.Add(new SaveNode()
+                    {
+                        Type = 0,
+                        Name = fileName,
+                        ParentIndex = index,
+                        Data = GetEntryData(fileEntry),
+                    });
+                }
+            }
+
+            output[index].EndIndex = output.Count;
+            return index;
+        }
+
+        private static void WriteNode(FileWriter writer, SaveNode node)
+        {
+            writer.Write(node.Type);
+            writer.Write((byte)((node.NameOffset >> 16) & 0xFF));
+            writer.Write((byte)((node.NameOffset >> 8) & 0xFF));
+            writer.Write((byte)(node.NameOffset & 0xFF));
+
+            if (node.Type == 1)
+            {
+                writer.Write((uint)node.ParentIndex);
+                writer.Write((uint)node.EndIndex);
+            }
+            else
+            {
+                writer.Write((uint)node.DataOffset);
+                writer.Write((uint)node.DataSize);
+            }
+        }
+
+        public void SaveFile(FileWriter writer)
+        {
+            writer.SetByteOrder(true);
+
+            foreach (var entry in files)
+            {
+                if (ShouldSaveAttachedFormat(entry))
+                    entry.SaveFileFormat();
+            }
+
+            var rootDirectory = new DirectoryNode()
+            {
+                Name = string.Empty,
+                FullPath = string.Empty,
+            };
+
+            for (int i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                string normalized = NormalizePath(file.FileName);
+                if (string.IsNullOrEmpty(normalized))
+                    continue;
+
+                string[] parts = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0)
+                    continue;
+
+                DirectoryNode current = rootDirectory;
+                for (int p = 0; p < parts.Length - 1; p++)
+                {
+                    current = GetOrCreateDirectory(current, parts[p]);
+                }
+
+                file.FileName = normalized;
+                current.Children.Add(file);
+            }
+
+            var nodes = new List<SaveNode>();
+            FlattenDirectory(rootDirectory, 0, nodes);
+
+            if (nodes.Count == 0)
+            {
+                nodes.Add(new SaveNode()
+                {
+                    Type = 1,
+                    Name = string.Empty,
+                    ParentIndex = 0,
+                    EndIndex = 1,
+                });
+            }
+
+            var nameOffsets = new Dictionary<string, int>(StringComparer.Ordinal);
+            var stringTable = new MemoryStream();
+            var stringWriter = new BinaryWriter(stringTable, Encoding.ASCII, true);
+
+            stringWriter.Write((byte)0);
+            nameOffsets[string.Empty] = 0;
+
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                string name = nodes[i].Name ?? string.Empty;
+                if (!nameOffsets.TryGetValue(name, out int offset))
+                {
+                    offset = (int)stringTable.Position;
+                    nameOffsets.Add(name, offset);
+                    stringWriter.Write(Encoding.ASCII.GetBytes(name));
+                    stringWriter.Write((byte)0);
+                }
+
+                nodes[i].NameOffset = offset;
+                nodes[i].DataSize = nodes[i].Data?.Length ?? 0;
+            }
+
+            int nodeSectionSize = (nodes.Count * 12) + (int)stringTable.Length;
+            int fileDataOffset = Align((int)RootNodeOffset + nodeSectionSize, _dataAlignment);
+
+            int currentOffset = fileDataOffset;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (nodes[i].Type != 0)
+                    continue;
+
+                currentOffset = Align(currentOffset, _dataAlignment);
+                nodes[i].DataOffset = currentOffset;
+                currentOffset += nodes[i].DataSize;
+            }
+
+            writer.Write(U8Magic);
+            writer.Write((uint)RootNodeOffset);
+            writer.Write((uint)nodeSectionSize);
+            writer.Write((uint)fileDataOffset);
+            writer.Write((uint)0);
+            writer.Write((uint)0);
+
+            writer.Write((uint)0);
+            writer.Write((uint)0);
+
+            writer.SeekBegin(RootNodeOffset);
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                WriteNode(writer, nodes[i]);
+            }
+
+            writer.Write(stringTable.ToArray());
+            writer.AlignBytes(_dataAlignment);
+
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (nodes[i].Type != 0)
+                    continue;
+
+                writer.SeekBegin(nodes[i].DataOffset);
+                if (nodes[i].Data != null && nodes[i].Data.Length > 0)
+                    writer.Write(nodes[i].Data);
+            }
+
+            if (_trailingData != null && _trailingData.Length > 0)
+                writer.Write(_trailingData);
+        }
+
+        public void Save(Stream stream)
+        {
+            if (_lzType != 0)
+                throw new NotSupportedException("This U8 file uses a wrapped variant and cannot be safely saved yet.");
+
+            byte[] output;
+            using (var ms = new MemoryStream())
+            {
+                using (var writer = new FileWriter(ms))
+                {
+                    SaveFile(writer);
+                }
+                output = ms.ToArray();
+            }
+
+            // Validate output by re-reading the archive before writing to disk.
+            using (var verifyStream = new MemoryStream(output))
+            {
+                var verifier = new U8()
+                {
+                    FileName = FileName,
+                    FilePath = FilePath,
+                    IFileInfo = new IFileInfo(),
+                };
+                if (!verifier.Identify(verifyStream))
+                    throw new InvalidDataException("Generated U8 archive failed signature validation.");
+
+                verifyStream.Position = 0;
+                verifier.Load(verifyStream);
+                verifier.Unload();
+            }
+
+            stream.Write(output, 0, output.Length);
         }
 
         public bool AddFile(ArchiveFileInfo archiveFileInfo)
         {
-            return false;
+            files.Add(new FileEntry()
+            {
+                FileName = NormalizePath(archiveFileInfo.FileName),
+                FileData = archiveFileInfo.FileData,
+                FileDataStream = archiveFileInfo.FileDataStream,
+            });
+            return true;
         }
 
         public bool DeleteFile(ArchiveFileInfo archiveFileInfo)
         {
+            var existing = files.FirstOrDefault(x => ReferenceEquals(x, archiveFileInfo));
+            if (existing != null)
+            {
+                files.Remove(existing);
+                return true;
+            }
+
+            existing = files.FirstOrDefault(x => string.Equals(NormalizePath(x.FileName), NormalizePath(archiveFileInfo.FileName), StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                files.Remove(existing);
+                return true;
+            }
+
             return false;
+        }
+
+        public class FileEntry : ArchiveFileInfo
+        {
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -74,14 +75,19 @@ namespace FirstPlugin
         {
             List<float> values = new List<float>();
 
-            int curLine = 0;
+            int curLine = 1;
             foreach (string line in valueTB.Lines)
             {
-                if (line == string.Empty)
+                string token = line?.Trim();
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    curLine++;
                     continue;
+                }
 
                 float valResult;
-                bool sucess = float.TryParse(line, out valResult);
+                bool sucess = float.TryParse(token, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out valResult) ||
+                              float.TryParse(token, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out valResult);
 
                 if (!sucess)
                     throw new Exception($"Failed to parse float at line {curLine}");
@@ -100,14 +106,19 @@ namespace FirstPlugin
         {
             List<byte> values = new List<byte>();
 
-            int curLine = 0;
+            int curLine = 1;
             foreach (string line in valueTB.Lines)
             {
-                if (line == string.Empty)
+                string token = line?.Trim();
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    curLine++;
                     continue;
+                }
 
                 byte valResult;
-                bool sucess = byte.TryParse(line, out valResult);
+                bool sucess = byte.TryParse(token, NumberStyles.Integer, CultureInfo.CurrentCulture, out valResult) ||
+                              byte.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out valResult);
 
                 if (!sucess)
                     throw new Exception($"Failed to parse byte at line {curLine}");
@@ -126,14 +137,19 @@ namespace FirstPlugin
         {
             List<int> values = new List<int>();
 
-            int curLine = 0;
+            int curLine = 1;
             foreach (string line in valueTB.Lines)
             {
-                if (line == string.Empty)
+                string token = line?.Trim();
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    curLine++;
                     continue;
+                }
 
                 int valResult;
-                bool sucess = int.TryParse(line, out valResult);
+                bool sucess = int.TryParse(token, NumberStyles.Integer, CultureInfo.CurrentCulture, out valResult) ||
+                              int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out valResult);
 
                 if (!sucess)
                     throw new Exception($"Failed to parse int at line {curLine}");
@@ -152,15 +168,12 @@ namespace FirstPlugin
         {
             List<string> values = new List<string>();
 
-            int curLine = 0;
             foreach (string line in valueTB.Lines)
             {
-                if (line == string.Empty)
+                if (string.IsNullOrWhiteSpace(line))
                     continue;
 
                 values.Add(line);
-
-                curLine++;
             }
             if (values.Count == 0)
                 values.Add("");
@@ -172,15 +185,12 @@ namespace FirstPlugin
         {
             List<string> values = new List<string>();
 
-            int curLine = 0;
             foreach (string line in valueTB.Lines)
             {
-                if (line == string.Empty)
+                if (string.IsNullOrWhiteSpace(line))
                     continue;
 
                 values.Add(line);
-
-                curLine++;
             }
             if (values.Count == 0)
                 values.Add("");
@@ -215,10 +225,11 @@ namespace FirstPlugin
 
             string Error = "";
 
-            int curLine = 0;
+            int curLine = 1;
             foreach (var line in valueTB.Lines)
             {
                 bool Success = true;
+                string token = line?.Trim();
 
                 if (Type == "WString")
                 {
@@ -228,16 +239,19 @@ namespace FirstPlugin
                 {
 
                 }
-                else if (line == string.Empty) //Don't parse empty lines, instead we'll skip those
+                else if (string.IsNullOrWhiteSpace(token)) //Don't parse empty lines, instead we'll skip those
                 {
 
                 }
                 else if (Type == "Single")
-                    Success = float.TryParse(line, out valSingle);
+                    Success = float.TryParse(token, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out valSingle) ||
+                              float.TryParse(token, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out valSingle);
                 else if (Type == "Int32")
-                    Success = int.TryParse(line, out valInt);
+                    Success = int.TryParse(token, NumberStyles.Integer, CultureInfo.CurrentCulture, out valInt) ||
+                              int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out valInt);
                 else if (Type == "Byte")
-                    Success = byte.TryParse(line, out valByte);
+                    Success = byte.TryParse(token, NumberStyles.Integer, CultureInfo.CurrentCulture, out valByte) ||
+                              byte.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out valByte);
                 
 
                 if (!Success)

@@ -136,6 +136,7 @@ namespace LayoutBXLYT
             }
 
             ActiveMaterial.EnableAlphaCompare = !chkAlphaDefaults.Checked;
+            ((LayoutBXLYT.Revolution.Material)ActiveMaterial).MarkEdited();
 
             if (loaded)
             {
@@ -161,6 +162,7 @@ namespace LayoutBXLYT
             }
 
             ActiveMaterial.EnableBlend = !chkColorBlendDefaults.Checked;
+            ((LayoutBXLYT.Revolution.Material)ActiveMaterial).MarkEdited();
 
             if (loaded)
             {
@@ -174,6 +176,7 @@ namespace LayoutBXLYT
                 return;
 
             ActiveMaterial.AlphaCompare.CompareMode = (GfxAlphaFunction)alphaSource1CB.SelectedItem;
+            ((LayoutBXLYT.Revolution.Material)ActiveMaterial).MarkEdited();
             ParentEditor.PropertyChanged?.Invoke(sender, e);
         }
 
@@ -182,6 +185,7 @@ namespace LayoutBXLYT
                 return;
 
             ActiveMaterial.AlphaCompare.Value = alphaValue1UD.Value;
+            ((LayoutBXLYT.Revolution.Material)ActiveMaterial).MarkEdited();
             ParentEditor.PropertyChanged?.Invoke(sender, e);
         }
 
@@ -193,6 +197,7 @@ namespace LayoutBXLYT
             ActiveMaterial.BlendMode.DestFactor = (BxlytBlendMode.GX2BlendFactor)colorBlendDestCB.SelectedItem;
             ActiveMaterial.BlendMode.BlendOp = (BxlytBlendMode.GX2BlendOp)colorBlendOpCB.SelectedItem;
             ActiveMaterial.BlendMode.LogicOp = (BxlytBlendMode.GX2LogicOp)colorBlendLogicCB.SelectedItem;
+            ((LayoutBXLYT.Revolution.Material)ActiveMaterial).MarkEdited();
 
             ParentEditor.PropertyChanged?.Invoke(sender, e);
         }

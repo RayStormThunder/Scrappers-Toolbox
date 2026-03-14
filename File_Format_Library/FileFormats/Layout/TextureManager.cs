@@ -4,8 +4,10 @@ using System.Linq;
 using System.Linq;
 using System.Threading.Tasks;
 using Toolbox.Library;
+using Toolbox.Library.IO;
 using FirstPlugin;
 using System.Windows.Forms;
+using System.IO;
 
 namespace LayoutBXLYT
 {
@@ -64,7 +66,7 @@ namespace LayoutBXLYT
 
                         foreach (var file in ArchiveParent.Files)
                         {
-                            if (file.FileName == name)
+                            if (FileMatchesTextureName(file.FileName, name))
                             {
                                 var fileFormat = file.FileFormat;
                                 if (fileFormat == null)
@@ -87,11 +89,42 @@ namespace LayoutBXLYT
                         }
                     }
                     break;
+                case PlatformType.ThreeDS:
+                    {
+                        if (ArchiveParent == null) return null;
+
+                        foreach (var file in ArchiveParent.Files)
+                        {
+                            if (FileMatchesTextureName(file.FileName, name))
+                            {
+                                var fileFormat = file.FileFormat;
+                                if (fileFormat == null)
+                                    fileFormat = file.OpenFile();
+
+                                if (fileFormat is BCLIM)
+                                {
+                                    var bclim = (BCLIM)fileFormat;
+
+                                    OpenFileDialog ofd = new OpenFileDialog();
+                                    ofd.Filter = FileFilters.REV_TEX;
+                                    ofd.FileName = Path.GetFileNameWithoutExtension(name);
+
+                                    if (ofd.ShowDialog() == DialogResult.OK)
+                                    {
+                                        bclim.Replace(ofd.FileName);
+                                        bclim.Text = Path.GetFileNameWithoutExtension(file.FileName);
+                                        return bclim;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    break;
                 case PlatformType.Wii:
                     if (ArchiveParent == null) return null;
                     foreach (var file in ArchiveParent.Files)
                     {
-                        if (file.FileName == name)
+                        if (FileMatchesTextureName(file.FileName, name))
                         {
                             var fileFormat = file.FileFormat;
                             if (fileFormat == null)
@@ -99,7 +132,21 @@ namespace LayoutBXLYT
 
                             if (fileFormat is TPL)
                             {
+                                var tpl = (TPL)fileFormat;
+                                var tex = tpl.TextureList.FirstOrDefault();
+                                if (tex == null)
+                                    continue;
 
+                                OpenFileDialog ofd = new OpenFileDialog();
+                                ofd.Filter = tex.ReplaceFilter;
+                                ofd.FileName = Path.GetFileNameWithoutExtension(name);
+
+                                if (ofd.ShowDialog() == DialogResult.OK)
+                                {
+                                    tex.Replace(ofd.FileName);
+                                    tex.Text = Path.GetFileNameWithoutExtension(file.FileName);
+                                    return tex;
+                                }
                             }
                         }
                     }
@@ -193,6 +240,43 @@ namespace LayoutBXLYT
                         });
                     }
                     break;
+                case PlatformType.ThreeDS:
+                    {
+                        var archive = ArchiveParent;
+                        if (archive == null) return null;
+
+                        OpenFileDialog ofd = new OpenFileDialog();
+                        ofd.Multiselect = true;
+                        ofd.Filter = "Layout Image (*.bclim)|*.bclim|All files (*.*)|*.*";
+                        if (ofd.ShowDialog() != DialogResult.OK)
+                            return textures;
+
+                        string textureFolder = GetTextureFolderFromArchive(archive, ".bclim", "timg");
+
+                        foreach (var filePath in ofd.FileNames)
+                        {
+                            var fileFormat = STFileLoader.OpenFileFormat(filePath);
+                            if (!(fileFormat is BCLIM))
+                                continue;
+
+                            var bclim = (BCLIM)fileFormat;
+                            var baseName = Path.GetFileNameWithoutExtension(filePath);
+                            bclim.Text = baseName;
+
+                            using (var mem = new MemoryStream())
+                            {
+                                bclim.Save(mem);
+                                archive.AddFile(new ArchiveFileInfo()
+                                {
+                                    FileData = mem.ToArray(),
+                                    FileName = Path.Combine(textureFolder, baseName + ".bclim").Replace('\\', '/'),
+                                });
+                            }
+
+                            textures.Add(bclim);
+                        }
+                    }
+                    break;
                 case PlatformType.Switch:
                     {
                         BNTX bntx = null;
@@ -219,9 +303,61 @@ namespace LayoutBXLYT
                             textures.Add(importedTextures[i]);
                     }
                     break;
+                case PlatformType.Wii:
+                    {
+                        var archive = ArchiveParent;
+                        if (archive == null) return null;
+
+                        string textureFolder = GetTextureFolderFromArchive(archive, ".tpl", "timg");
+
+                        var tpl = TPL.CreateNewFromImage();
+                        if (tpl == null)
+                            return textures;
+
+                        using (var mem = new MemoryStream())
+                        {
+                            tpl.Save(mem);
+                            archive.AddFile(new ArchiveFileInfo()
+                            {
+                                FileData = mem.ToArray(),
+                                FileName = Path.Combine(textureFolder, tpl.FileName).Replace('\\', '/'),
+                            });
+                        }
+
+                        var tex = tpl.TextureList.FirstOrDefault();
+                        if (tex != null)
+                        {
+                            tex.Text = Path.GetFileNameWithoutExtension(tpl.FileName);
+                            textures.Add(tex);
+                        }
+                    }
+                    break;
             }
 
             return textures;
+        }
+
+        private static string GetTextureFolderFromArchive(IArchiveFile archive, string extension, string defaultFolder)
+        {
+            var match = archive.Files.FirstOrDefault(p =>
+                p.FileName != null && p.FileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
+            if (match == null)
+                return defaultFolder;
+
+            return Path.GetDirectoryName(match.FileName);
+        }
+
+        private static bool FileMatchesTextureName(string fileName, string textureName)
+        {
+            if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(textureName))
+                return false;
+
+            var fileBase = Path.GetFileNameWithoutExtension(fileName);
+            var texBase = Path.GetFileNameWithoutExtension(textureName);
+
+            return string.Equals(fileName, textureName, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(fileBase, textureName, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(fileBase, texBase, StringComparison.OrdinalIgnoreCase);
         }
 
         public void Dispose()

@@ -342,17 +342,87 @@ namespace LayoutBXLYT
             }
             else
             {
+                var oldTranslate = ActivePane.Translate;
+                var oldRotate = ActivePane.Rotate;
+                var oldScale = ActivePane.Scale;
+                float oldWidth = ActivePane.Width;
+                float oldHeight = ActivePane.Height;
+
+                var newTranslate = new Syroot.Maths.Vector3F(
+                    tranXUD.Value, tranYUD.Value, tranZUD.Value);
+
+                var newRotate = new Syroot.Maths.Vector3F(
+                    rotXUD.Value, rotYUD.Value, rotZUD.Value);
+
+                var newScale = new Syroot.Maths.Vector2F(
+                    scaleXUD.Value, scaleYUD.Value);
+
+                float newWidth = sizeXUD.Value;
+                float newHeight = sizeYUD.Value;
+
                 ActivePane.Translate = new Syroot.Maths.Vector3F(
-                tranXUD.Value, tranYUD.Value, tranZUD.Value);
+                    newTranslate.X, newTranslate.Y, newTranslate.Z);
 
                 ActivePane.Rotate = new Syroot.Maths.Vector3F(
-                  rotXUD.Value, rotYUD.Value, rotZUD.Value);
+                    newRotate.X, newRotate.Y, newRotate.Z);
 
                 ActivePane.Scale = new Syroot.Maths.Vector2F(
-                scaleXUD.Value, scaleYUD.Value);
+                    newScale.X, newScale.Y);
 
-                ActivePane.Width = sizeXUD.Value;
-                ActivePane.Height = sizeYUD.Value;
+                ActivePane.Width = newWidth;
+                ActivePane.Height = newHeight;
+
+                bool relative = Runtime.LayoutEditor.MulticlickBehavior == Runtime.LayoutEditor.MulticlickBehaviorMode.Relative;
+                float dTransX = newTranslate.X - oldTranslate.X;
+                float dTransY = newTranslate.Y - oldTranslate.Y;
+                float dTransZ = newTranslate.Z - oldTranslate.Z;
+                float dRotX = newRotate.X - oldRotate.X;
+                float dRotY = newRotate.Y - oldRotate.Y;
+                float dRotZ = newRotate.Z - oldRotate.Z;
+                float dScaleX = newScale.X - oldScale.X;
+                float dScaleY = newScale.Y - oldScale.Y;
+                float dWidth = newWidth - oldWidth;
+                float dHeight = newHeight - oldHeight;
+
+                foreach (BasePane pane in parentEditor.SelectedPanes)
+                {
+                    if (pane == null || pane == ActivePane)
+                        continue;
+
+                    if (relative)
+                    {
+                        pane.Translate = new Syroot.Maths.Vector3F(
+                            pane.Translate.X + dTransX,
+                            pane.Translate.Y + dTransY,
+                            pane.Translate.Z + dTransZ);
+
+                        pane.Rotate = new Syroot.Maths.Vector3F(
+                            pane.Rotate.X + dRotX,
+                            pane.Rotate.Y + dRotY,
+                            pane.Rotate.Z + dRotZ);
+
+                        pane.Scale = new Syroot.Maths.Vector2F(
+                            pane.Scale.X + dScaleX,
+                            pane.Scale.Y + dScaleY);
+
+                        pane.Width += dWidth;
+                        pane.Height += dHeight;
+                    }
+                    else
+                    {
+                        pane.Translate = new Syroot.Maths.Vector3F(
+                            newTranslate.X, newTranslate.Y, newTranslate.Z);
+
+                        pane.Rotate = new Syroot.Maths.Vector3F(
+                            newRotate.X, newRotate.Y, newRotate.Z);
+
+                        pane.Scale = new Syroot.Maths.Vector2F(
+                            newScale.X, newScale.Y);
+
+                        pane.Width = newWidth;
+                        pane.Height = newHeight;
+                    }
+                }
             }
 
             parentEditor.PropertyChanged?.Invoke(sender, e);

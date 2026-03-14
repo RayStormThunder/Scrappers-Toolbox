@@ -95,7 +95,7 @@ namespace Toolbox
             if (process.ExitCode != 0)
                 throw new TimeoutException();
             Console.WriteLine("Finished downloading");
-            string updateExe = Path.Combine(Runtime.ExecutableDir, "master\\Toolbox.exe"),
+            string updateExe = Path.Combine(Runtime.ExecutableDir, "master\\Scrapper's Toolbox.exe"),
                   currentExe = System.Reflection.Assembly.GetEntryAssembly().Location;
             if (!Utils.CreateMD5Hash(currentExe).SequenceEqual(Utils.CreateMD5Hash(updateExe)))
                 CanUpdate = true;

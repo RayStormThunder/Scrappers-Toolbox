@@ -32,12 +32,21 @@ namespace Toolbox
         IFileFormat[] SupportedFormats;
         IFileMenuExtension[] FileMenuExtensions;
 
+        private void ShowAsMaximizedMdiChild(Form form)
+        {
+            if (form == null)
+                return;
+
+            form.MdiParent = this;
+            form.WindowState = FormWindowState.Maximized;
+            form.Show();
+        }
+
         public void AddChildContainer(Form form)
         {
             TabDupeIndex = 0;
             form.Text = CheckTabDupes(form.Text);
-            form.MdiParent = this;
-            form.Show();
+            ShowAsMaximizedMdiChild(form);
 
             IFileFormat activeFile;
 
@@ -53,6 +62,21 @@ namespace Toolbox
         public MainForm()
         {
             InitializeComponent();
+            ApplyExecutableIcon();
+        }
+
+        private void ApplyExecutableIcon()
+        {
+            try
+            {
+                var exeIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (exeIcon != null)
+                    this.Icon = (Icon)exeIcon.Clone();
+            }
+            catch
+            {
+                // Keep designer-assigned icon if executable icon cannot be loaded.
+            }
         }
 
         public void UpdateForm()
@@ -236,10 +260,9 @@ namespace Toolbox
             {
                 var root = new ExplorerFolder(dlg.SelectedPath);
                 ObjectEditor editor = new ObjectEditor();
-                editor.MdiParent = this;
                 editor.Text = CheckTabDupes(root.Text);
                 editor.AddNode(root);
-                editor.Show();
+                ShowAsMaximizedMdiChild(editor);
             }
         }
 
@@ -280,6 +303,15 @@ namespace Toolbox
             if (!File.Exists(FileName))
                 return;
 
+            try
+            {
+                Runtime.BackupOriginalOnLoad(FileName);
+            }
+            catch (Exception ex)
+            {
+                STConsole.WriteLine($"Failed to create load backup for {FileName}: {ex.Message}");
+            }
+
             SaveRecentFile(FileName);
 
             object file = STFileLoader.OpenFileFormat(FileName);
@@ -303,8 +335,7 @@ namespace Toolbox
                     var form = new GenericEditorForm(false, control);
                     TabDupeIndex = 0;
                     form.Text = CheckTabDupes(((IFileFormat)file).FileName);
-                    form.MdiParent = this;
-                    form.Show();
+                    ShowAsMaximizedMdiChild(form);
 
                     HasEditorActive = true;
                 }
@@ -314,6 +345,7 @@ namespace Toolbox
                     var form = (Form)method.Invoke(file, new object[0]);
                     TabDupeIndex = 0;
                     form.Text = CheckTabDupes(((IFileFormat)file).FileName);
+                    form.WindowState = FormWindowState.Maximized;
                     form.Show();
 
                     HasEditorActive = true;
@@ -351,9 +383,8 @@ namespace Toolbox
             if (!useActiveEditor || !IsEditorActive)
             {
                 editor = new ObjectEditor(((IFileFormat)file));
-                editor.MdiParent = this;
                 editor.Text = CheckTabDupes(((IFileFormat)file).FileName);
-                editor.Show();
+                ShowAsMaximizedMdiChild(editor);
 
                 ((ObjectEditor)editor).SelectFirstNode();
             }
@@ -520,6 +551,7 @@ namespace Toolbox
                     if (format is STGenericWrapper && !(format is STGenericTexture))
                     {
                         ((STGenericWrapper)format).Export(FileName);
+                        Runtime.BackupSavedFile(FileName);
                         if (Runtime.AlwaysSaveAll)
                         {
                             continue;
@@ -1332,9 +1364,25 @@ namespace Toolbox
             if (form == null || form.IsDisposed)
             {
                 form = new STConsoleForm();
-                form.Show(this);
+                // Ensure console appears inside the main window as an MDI child
+                try
+                {
+                    form.MdiParent = this;
+                }
+                catch { }
+                form.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
+                form.WindowState = System.Windows.Forms.FormWindowState.Normal;
+                form.Show();
             }
-            form.Focus();
+
+            try
+            {
+                form.BringToFront();
+                form.Focus();
+                if (form.WindowState == System.Windows.Forms.FormWindowState.Minimized)
+                    form.WindowState = System.Windows.Forms.FormWindowState.Normal;
+            }
+            catch { }
         }
 
         private void aboutToolStripMenuItem1_Click(object sender, EventArgs e)
@@ -1375,9 +1423,18 @@ namespace Toolbox
                     form.StartPosition = FormStartPosition.CenterParent;
                     if (form.ShowDialog() != DialogResult.OK)
                         e.Cancel = true;
-
-                    Config.Save();
                 }
+            }
+
+            if (!e.Cancel)
+            {
+                foreach (Form child in Application.OpenForms)
+                {
+                    if (child is LayoutBXLYT.LayoutEditor)
+                        ((LayoutBXLYT.LayoutEditor)child).PersistWorkspaceLayout();
+                }
+
+                Config.Save();
             }
         }
 
@@ -1588,7 +1645,7 @@ namespace Toolbox
                 foreach (var file in failedFiles)
                     detailList += $"{file}\n";
 
-                STErrorDialog.Show("Some files failed to export! See detail list of failed files.", "Switch Toolbox", detailList);
+                STErrorDialog.Show("Some files failed to export! See detail list of failed files.", "Scrapper's Toolbox", detailList);
             }
             else
                 MessageBox.Show("Files batched successfully!");
@@ -1633,7 +1690,7 @@ namespace Toolbox
                 foreach (var file in failedFiles)
                     detailList += $"{file}\n";
 
-                STErrorDialog.Show("Some files failed to export! See detail list of failed files.", "Switch Toolbox", detailList);
+                STErrorDialog.Show("Some files failed to export! See detail list of failed files.", "Scrapper's Toolbox", detailList);
             }
             else
                 MessageBox.Show("Files batched successfully!");

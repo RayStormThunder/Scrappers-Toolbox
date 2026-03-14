@@ -34,6 +34,26 @@ namespace Toolbox.Library
             set { animationTrackBar.DisplayKeys = value; }
         }
 
+        public float CurrentFrame
+        {
+            get { return animationTrackBar.CurrentFrame; }
+        }
+
+        public bool ForceMaxWidth
+        {
+            get { return animationTrackBar.ForceMaxWidth; }
+            set
+            {
+                animationTrackBar.ForceMaxWidth = value;
+                if (forceMaxWidthToggle != null)
+                    forceMaxWidthToggle.Checked = value;
+            }
+        }
+
+        private CheckBox forceMaxWidthToggle;
+        private Label selectedPaneLabel;
+        private Label selectedAnimationLabel;
+
         private OpenTK.GLControl _viewport;
         public virtual OpenTK.GLControl Viewport
         {
@@ -189,10 +209,13 @@ namespace Toolbox.Library
             this.animationTrackBar.ElapsedPenColorTop = FormThemes.BaseTheme.FormBackColor;
             */
             panel1.BackColor = FormThemes.BaseTheme.FormBackColor;
-            animationPlayBtn.BackColor = FormThemes.BaseTheme.FormBackColor;
+            animationPlayBtn.BackColor = Color.FromArgb(48, 130, 58);
             button2.BackColor = FormThemes.BaseTheme.FormBackColor;
-            animationPlayBtn.ForeColor = FormThemes.BaseTheme.FormForeColor;
+            nextFrameBtn.BackColor = FormThemes.BaseTheme.FormBackColor;
+            animationPlayBtn.ForeColor = Color.White;
             button2.ForeColor = FormThemes.BaseTheme.FormForeColor;
+            nextFrameBtn.ForeColor = FormThemes.BaseTheme.FormForeColor;
+            playPauseLabel.ForeColor = FormThemes.BaseTheme.FormForeColor;
 
             frameSpeedUD.ForeColor = FormThemes.BaseTheme.FormForeColor;
             frameSpeedUD.BackColor = FormThemes.BaseTheme.FormBackColor;
@@ -205,9 +228,62 @@ namespace Toolbox.Library
             frameSpeedUD.Value = 60;
             frameSpeedUD.Maximum = 120;
 
+            InitializeTimelineHeader();
+
             SetupTimer();
 
             this.LostFocus += new System.EventHandler(AnimationPanel_LostFocus);
+        }
+
+        public void SetTimelineContext(string paneName, string animationName)
+        {
+            if (selectedPaneLabel == null || selectedAnimationLabel == null)
+                return;
+
+            selectedPaneLabel.Text = string.IsNullOrEmpty(paneName) ? "Pane: (none)" : $"Pane: {paneName}";
+            selectedAnimationLabel.Text = string.IsNullOrEmpty(animationName) ? "Animation: (none)" : $"Animation: {animationName}";
+            animationTrackBar.GroupTarget = string.IsNullOrEmpty(paneName) ? string.Empty : paneName;
+        }
+
+        private void InitializeTimelineHeader()
+        {
+            stPanel1.Height = 22;
+            animationTrackBar.Location = new Point(animationTrackBar.Left, stPanel1.Bottom);
+            animationTrackBar.Height = panel1.Top - animationTrackBar.Top;
+
+            forceMaxWidthToggle = new CheckBox();
+            forceMaxWidthToggle.AutoSize = true;
+            forceMaxWidthToggle.Text = "Force Max Width";
+            forceMaxWidthToggle.Location = new Point(6, 3);
+            forceMaxWidthToggle.ForeColor = FormThemes.BaseTheme.FormForeColor;
+            forceMaxWidthToggle.BackColor = Color.Transparent;
+            forceMaxWidthToggle.CheckedChanged += (s, e) =>
+            {
+                animationTrackBar.ForceMaxWidth = forceMaxWidthToggle.Checked;
+                Runtime.LayoutEditor.ForceMaxWidthTimeline = forceMaxWidthToggle.Checked;
+                Config.Save();
+            };
+
+            selectedPaneLabel = new Label();
+            selectedPaneLabel.AutoSize = true;
+            selectedPaneLabel.Text = "Pane: (none)";
+            selectedPaneLabel.Location = new Point(130, 4);
+            selectedPaneLabel.ForeColor = FormThemes.BaseTheme.FormForeColor;
+            selectedPaneLabel.BackColor = Color.Transparent;
+
+            selectedAnimationLabel = new Label();
+            selectedAnimationLabel.AutoSize = true;
+            selectedAnimationLabel.Text = "Animation: (none)";
+            selectedAnimationLabel.Location = new Point(300, 4);
+            selectedAnimationLabel.ForeColor = FormThemes.BaseTheme.FormForeColor;
+            selectedAnimationLabel.BackColor = Color.Transparent;
+
+            stPanel1.Controls.Clear();
+            stPanel1.Controls.Add(forceMaxWidthToggle);
+            stPanel1.Controls.Add(selectedPaneLabel);
+            stPanel1.Controls.Add(selectedAnimationLabel);
+
+            forceMaxWidthToggle.Checked = Runtime.LayoutEditor.ForceMaxWidthTimeline;
         }
 
         private void Play()
@@ -293,7 +369,7 @@ namespace Toolbox.Library
 
         private void animationPlayBtn_Click(object sender, EventArgs e)
         {
-            if (currentAnimations.Count == 0 || FrameCount <= StartFrame)
+            if (currentAnimations.Count == 0)
                 return;
 
             if (AnimationPlayerState == AnimPlayerState.Playing)
@@ -332,7 +408,7 @@ namespace Toolbox.Library
         }
 
         private void nextButton_Click(object sender, EventArgs e) {
-            if (animationTrackBar.CurrentFrame < animationTrackBar.FrameCount)
+            if (animationTrackBar.CurrentFrame < animationTrackBar.FrameCount - 1)
                 animationTrackBar.CurrentFrame++;
         }
         private void prevButton_Click(object sender, EventArgs e) {

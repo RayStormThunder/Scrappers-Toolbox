@@ -27,9 +27,9 @@ deploy:
   force_update: true  
   
 after_build:
-  - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Toolbox.exe.config"
-  - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Toolbox.pdb"
-  - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Toolbox.exe"
+  - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Scrapper's Toolbox.exe.config"
+  - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Scrapper's Toolbox.pdb"
+  - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Scrapper's Toolbox.exe"
   - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Lib"
   - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\KclMaterialPresets"
   - 7z a "Toolbox-Latest.zip" "%APPVEYOR_BUILD_FOLDER%\Toolbox\bin\Release\Hashes"

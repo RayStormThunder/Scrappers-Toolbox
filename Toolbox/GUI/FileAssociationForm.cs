@@ -61,7 +61,7 @@ namespace Toolbox
                           new FileAssociation
                           {
                               Extension = ext,
-                              ProgId = "Switch Toolbox",
+                              ProgId = "Scrappers Toolbox",
                               FileTypeDescription = des,
                               ExecutableFilePath = Application.ExecutablePath
                           });

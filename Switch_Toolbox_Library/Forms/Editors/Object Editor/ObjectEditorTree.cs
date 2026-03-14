@@ -19,6 +19,7 @@ namespace Toolbox.Library.Forms
     public partial class ObjectEditorTree : UserControl
     {
         private bool SuppressAfterSelectEvent = false;
+        private bool _suppressBackupToggleEvent = false;
 
         private bool IsSearchPanelDocked
         {
@@ -101,6 +102,7 @@ namespace Toolbox.Library.Forms
             }
 
             SelectNode(FileRoot);
+            RefreshBackupCheckboxState();
             for (int i = 0; i < FileRoot.FileNodes.Count; i++)
             {
                 if (FileRoot.FileNodes[i].Item1.OpenFileFormatOnLoad)
@@ -164,6 +166,8 @@ namespace Toolbox.Library.Forms
             treeViewCustom1.Nodes.Add(node); // Add the new nodes
             treeViewCustom1.EndUpdate(); // Allow the treeview to update visually
 
+            RefreshBackupCheckboxState();
+
             if (node is ISingleTextureIconLoader) {
                 LoadGenericTextureIcons((ISingleTextureIconLoader)node);
             }
@@ -187,6 +191,17 @@ namespace Toolbox.Library.Forms
             }
         }
 
+        public void RefreshBackupCheckboxState()
+        {
+            var activeFile = GetActiveFile();
+            string filePath = activeFile?.FilePath;
+
+            _suppressBackupToggleEvent = true;
+            enableBackupsChkBox.Enabled = !string.IsNullOrEmpty(filePath);
+            enableBackupsChkBox.Checked = Runtime.IsBackupEnabledForFile(filePath);
+            _suppressBackupToggleEvent = false;
+        }
+
         public ObjectEditorTree(ObjectEditor objectEditor)
         {
             InitializeComponent();
@@ -208,6 +223,8 @@ namespace Toolbox.Library.Forms
                 nodeSizeCB.Items.Add(nodeSize);
 
             nodeSizeCB.SelectedIndex = 1;
+
+            RefreshBackupCheckboxState();
         }
 
         public Viewport GetViewport() => viewport;
@@ -882,6 +899,29 @@ namespace Toolbox.Library.Forms
         {
             AddFilesToActiveEditor = activeEditorChkBox.Checked;
             Console.WriteLine("AddFilesToActiveObjectEditor " + Runtime.AddFilesToActiveObjectEditor);
+        }
+
+        private void enableBackupsChkBox_CheckedChanged(object sender, EventArgs e)
+        {
+            if (_suppressBackupToggleEvent)
+                return;
+
+            var activeFile = GetActiveFile();
+            string filePath = activeFile?.FilePath;
+            if (string.IsNullOrEmpty(filePath))
+                return;
+
+            try
+            {
+                Runtime.SetBackupEnabledForFile(filePath, enableBackupsChkBox.Checked);
+
+                if (enableBackupsChkBox.Checked)
+                    Runtime.BackupOriginalOnLoad(filePath);
+            }
+            catch (Exception ex)
+            {
+                STConsole.WriteLine($"Failed to update backup setting for {filePath}: {ex.Message}");
+            }
         }
 
         private void treeViewCustom1_DragEnter(object sender, DragEventArgs e)

@@ -276,6 +276,11 @@ namespace Toolbox.Library
                         Enum.TryParse(node.InnerText, out shadingMode);
                         Runtime.LayoutEditor.Shading = shadingMode;
                         break;
+                    case "LayoutVisibilityMode":
+                        Runtime.LayoutEditor.TextureVisibilityMode visibilityMode;
+                        Enum.TryParse(node.InnerText, out visibilityMode);
+                        Runtime.LayoutEditor.VisibilityMode = visibilityMode;
+                        break;
                     case "IsGamePreview":
                         bool.TryParse(node.InnerText, out Runtime.LayoutEditor.IsGamePreview);
                         break;
@@ -311,6 +316,14 @@ namespace Toolbox.Library
                         break;
                     case "TransformPaneChidlren":
                         bool.TryParse(node.InnerText, out Runtime.LayoutEditor.TransformChidlren);
+                        break;
+                    case "LayoutForceMaxWidthTimeline":
+                        bool.TryParse(node.InnerText, out Runtime.LayoutEditor.ForceMaxWidthTimeline);
+                        break;
+                    case "LayoutMulticlickBehavior":
+                        Runtime.LayoutEditor.MulticlickBehaviorMode multiclickBehavior;
+                        if (Enum.TryParse(node.InnerText, out multiclickBehavior))
+                            Runtime.LayoutEditor.MulticlickBehavior = multiclickBehavior;
                         break;
                     case "DumpShadersDEBUG":
                         bool.TryParse(node.InnerText, out Runtime.DumpShadersDEBUG);
@@ -473,6 +486,7 @@ namespace Toolbox.Library
             parentNode.AppendChild(layoutSettingsNode);
 
             layoutSettingsNode.AppendChild(createNode(doc, "LayoutShadingMode", Runtime.LayoutEditor.Shading.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutVisibilityMode", Runtime.LayoutEditor.VisibilityMode.ToString()));
             layoutSettingsNode.AppendChild(createNode(doc, "LayoutBackgroundColor", ColorTranslator.ToHtml(Runtime.LayoutEditor.BackgroundColor)));
             layoutSettingsNode.AppendChild(createNode(doc, "IsGamePreview", Runtime.LayoutEditor.IsGamePreview.ToString()));
             layoutSettingsNode.AppendChild(createNode(doc, "LayoutDisplayGrid", Runtime.LayoutEditor.DisplayGrid.ToString()));
@@ -483,6 +497,8 @@ namespace Toolbox.Library
             layoutSettingsNode.AppendChild(createNode(doc, "DisplayTextPane", Runtime.LayoutEditor.DisplayTextPane.ToString()));
             layoutSettingsNode.AppendChild(createNode(doc, "PartsAsNullPanes", Runtime.LayoutEditor.PartsAsNullPanes.ToString()));
             layoutSettingsNode.AppendChild(createNode(doc, "TransformPaneChidlren", Runtime.LayoutEditor.TransformChidlren.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutForceMaxWidthTimeline", Runtime.LayoutEditor.ForceMaxWidthTimeline.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutMulticlickBehavior", Runtime.LayoutEditor.MulticlickBehavior.ToString()));
         }
 
         private static void AppendDeveloperSettings(XmlDocument doc, XmlNode parentNode)

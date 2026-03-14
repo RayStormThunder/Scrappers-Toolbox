@@ -23,6 +23,7 @@ namespace Toolbox.Library.Forms
         public void Stop() { }
 
         protected int margin = 0;
+        private bool forceMaxWidth = false;
 
         private int startTime = 0;
         public int StartTime
@@ -32,6 +33,21 @@ namespace Toolbox.Library.Forms
                     startTime = value - 1;
                 else
                     startTime = value;
+
+                if (ForceMaxWidth)
+                    ApplyForceMaxView();
+            }
+        }
+
+        public bool ForceMaxWidth
+        {
+            get { return forceMaxWidth; }
+            set
+            {
+                forceMaxWidth = value;
+                if (forceMaxWidth)
+                    ApplyForceMaxView();
+                Refresh();
             }
         }
 
@@ -78,7 +94,7 @@ namespace Toolbox.Library.Forms
             get { return currentFrame; }
             set
             {
-                if (FollowCurrentFrame && !(Focused && MouseButtons == MouseButtons.Right))
+                if (!ForceMaxWidth && FollowCurrentFrame && !(Focused && MouseButtons == MouseButtons.Right))
                 {
                     double delta = value - (frameRight + frameLeft) * 0.5;
                     frameLeft += delta;
@@ -112,6 +128,9 @@ namespace Toolbox.Library.Forms
                     ResolveFitting();
                 }
 
+                if (ForceMaxWidth)
+                    ApplyForceMaxView();
+
                 if (currentFrame > lastFrame)
                     currentFrame = lastFrame;
 
@@ -126,6 +145,12 @@ namespace Toolbox.Library.Forms
 
         protected double frameLeft = 0;
         protected double frameRight = 200;
+
+        private void ApplyForceMaxView()
+        {
+            frameLeft = startTime;
+            frameRight = lastFrame;
+        }
 
         protected Point lastMousePos;
 
@@ -222,6 +247,14 @@ namespace Toolbox.Library.Forms
 
         private void Timer_Tick(object sender, EventArgs e)
         {
+            if (ForceMaxWidth)
+            {
+                currentFrame = Math.Min(Math.Max(startTime, (int)Math.Round(((lastMousePos.X - 20 - margin) * (frameRight - frameLeft) / (Width - 40 - margin) + frameLeft))), lastFrame);
+                FrameChanged?.Invoke(this, new EventArgs());
+                Refresh();
+                return;
+            }
+
             double step;
             if (lastMousePos.X < 20 + margin)
             {
@@ -266,13 +299,13 @@ namespace Toolbox.Library.Forms
             if (e.Button == MouseButtons.Left)
             {
 
-                timer.Enabled = (e.X < 20 + margin || e.X > Width - 20);
+                timer.Enabled = !ForceMaxWidth && (e.X < 20 + margin || e.X > Width - 20);
                 Locked = true;
                 currentFrame = Math.Min(Math.Max(startTime, (int)Math.Round(((e.X - 20 - margin) * (frameRight - frameLeft) / (Width - 40 - margin) + frameLeft))), lastFrame);
                 FrameChanged?.Invoke(this, new EventArgs());
                 Refresh();
             }
-            else if (e.Button == MouseButtons.Right)
+            else if (e.Button == MouseButtons.Right && !ForceMaxWidth)
             {
                 double delta = (e.X - lastMousePos.X) * (frameRight - frameLeft) / (Width - 40 - margin);
                 frameLeft -= delta;
@@ -297,6 +330,8 @@ namespace Toolbox.Library.Forms
         {
             base.OnMouseWheel(e);
             if (lastFrame == startTime)
+                return;
+            if (ForceMaxWidth)
                 return;
 
             if (frameRight - frameLeft <= 2 && e.Delta > 0)
