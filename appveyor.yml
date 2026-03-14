@@ -12,7 +12,6 @@ assembly_info:
   patch: true
 deploy:
 - provider: GitHub
-  tag: Latest
   description: 'This is the latest build of the tool automatically built from the latest commit!\n\nMessage: $(APPVEYOR_REPO_COMMIT_MESSAGE)\n\n Timestamp: $(APPVEYOR_REPO_COMMIT_TIMESTAMP)
   
    **If this program does not open, make sure to unblock the zip file then extract!**
