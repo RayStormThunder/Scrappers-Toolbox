@@ -9,7 +9,6 @@ namespace LayoutBXLYT.CTR
 {
     public class TextureRef : BxlytTextureRef
     {
-        public short ID;
         byte flag1 = 0x06;
         byte flag2 = 0x06;
 
@@ -41,8 +40,10 @@ namespace LayoutBXLYT.CTR
             flag1 = reader.ReadByte();
             flag2 = reader.ReadByte();
 
-            if (header.Textures.Count > 0)
+            if (ID >= 0 && ID < header.Textures.Count)
                 Name = header.Textures[ID];
+            else
+                Name = string.Empty;
         }
 
         public void Write(FileWriter writer)

@@ -299,7 +299,43 @@ namespace LayoutBXLYT
                 ((ITextPane)copiedPane).CopyMaterial();
             if (copiedPane is IWindowPane)
                 ((IWindowPane)copiedPane).CopyWindows();
+
+            CloneColorProperties(copiedPane);
             return copiedPane;
+        }
+
+        private static void CloneColorProperties(object target)
+        {
+            if (target == null)
+                return;
+
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            foreach (var property in target.GetType().GetProperties(flags))
+            {
+                if (!property.CanRead || !property.CanWrite || property.GetIndexParameters().Length > 0)
+                    continue;
+
+                if (property.PropertyType == typeof(STColor8))
+                {
+                    var color = property.GetValue(target) as STColor8;
+                    if (color != null)
+                        property.SetValue(target, new STColor8(color.R, color.G, color.B, color.A));
+                }
+                else if (property.PropertyType == typeof(STColor8[]))
+                {
+                    var colors = property.GetValue(target) as STColor8[];
+                    if (colors == null)
+                        continue;
+
+                    var clonedColors = new STColor8[colors.Length];
+                    for (int i = 0; i < colors.Length; i++)
+                    {
+                        var color = colors[i];
+                        clonedColors[i] = color == null ? null : new STColor8(color.R, color.G, color.B, color.A);
+                    }
+                    property.SetValue(target, clonedColors);
+                }
+            }
         }
 
         public virtual UserData CreateUserData()
@@ -1484,6 +1520,10 @@ namespace LayoutBXLYT
         {
             var cloned = (BxlytWindowContent)this.MemberwiseClone();
             cloned.Material = cloned.Material?.Clone();
+            cloned.ColorTopLeft = ColorTopLeft == null ? null : new STColor8(ColorTopLeft.R, ColorTopLeft.G, ColorTopLeft.B, ColorTopLeft.A);
+            cloned.ColorTopRight = ColorTopRight == null ? null : new STColor8(ColorTopRight.R, ColorTopRight.G, ColorTopRight.B, ColorTopRight.A);
+            cloned.ColorBottomLeft = ColorBottomLeft == null ? null : new STColor8(ColorBottomLeft.R, ColorBottomLeft.G, ColorBottomLeft.B, ColorBottomLeft.A);
+            cloned.ColorBottomRight = ColorBottomRight == null ? null : new STColor8(ColorBottomRight.R, ColorBottomRight.G, ColorBottomRight.B, ColorBottomRight.A);
             cloned.TexCoords = TexCoords?.Select(x => new TexCoord()
             {
                 TopLeft = x.TopLeft,
@@ -1539,7 +1579,24 @@ namespace LayoutBXLYT
                     BottomRight = reader.ReadVec2SY(),
                 });
 
-            Material = LayoutFile.Materials[MaterialIndex];
+            if (LayoutFile.Materials != null && MaterialIndex < LayoutFile.Materials.Count)
+            {
+                Material = LayoutFile.Materials[MaterialIndex];
+            }
+            else
+            {
+                Material = LayoutFile.Materials?.FirstOrDefault();
+                if (Material != null)
+                {
+                    MaterialIndex = (ushort)LayoutFile.Materials.IndexOf(Material);
+                }
+                else
+                {
+                    Material = LayoutFile.CreateNewMaterial("Auto_WindowContent_Material");
+                    int addedIndex = LayoutFile.AddMaterial(Material);
+                    MaterialIndex = (ushort)(addedIndex < 0 ? 0 : addedIndex);
+                }
+            }
         }
 
         public void Write(FileWriter writer)
@@ -1597,7 +1654,24 @@ namespace LayoutBXLYT
             TextureFlip = (WindowFrameTexFlip)reader.ReadByte();
             reader.ReadByte(); //padding
 
-            Material = header.Materials[MaterialIndex];
+            if (header.Materials != null && MaterialIndex < header.Materials.Count)
+            {
+                Material = header.Materials[MaterialIndex];
+            }
+            else
+            {
+                Material = header.Materials?.FirstOrDefault();
+                if (Material != null)
+                {
+                    MaterialIndex = (ushort)header.Materials.IndexOf(Material);
+                }
+                else
+                {
+                    Material = header.CreateNewMaterial("Auto_WindowFrame_Material");
+                    int addedIndex = header.AddMaterial(Material);
+                    MaterialIndex = (ushort)(addedIndex < 0 ? 0 : addedIndex);
+                }
+            }
         }
 
         public void Write(FileWriter writer)
@@ -1947,6 +2021,8 @@ namespace LayoutBXLYT
                 case "LVC":
                     return new LVCTagEntry(target, interpolationType);
                 case "LMC":
+                    if (!string.IsNullOrEmpty(Tag) && Tag.StartsWith("R"))
+                        return new RevLMCTagEntry(target, interpolationType);
                     return new LMCTagEntry(target, interpolationType);
                 case "LTP":
                     return new LTPTagEntry(target, interpolationType);
@@ -2328,18 +2404,37 @@ namespace LayoutBXLYT
         public void RecalculateMaterialReferences()
         {
             List<BxlytMaterial> materials = Materials;
+
+            ushort ResolveIndex(BxlytMaterial material)
+            {
+                if (material == null)
+                    return 0;
+
+                int index = materials.IndexOf(material);
+                if (index < 0)
+                    index = AddMaterial(material);
+
+                if (index < 0)
+                    index = materials.IndexOf(material);
+
+                if (index < 0)
+                    index = 0;
+
+                return (ushort)index;
+            }
+
             foreach (var pane in PaneLookup.Values)
             {
                 if (pane is IPicturePane)
-                    ((IPicturePane)pane).MaterialIndex = (ushort)materials.IndexOf(((IPicturePane)pane).Material);
+                    ((IPicturePane)pane).MaterialIndex = ResolveIndex(((IPicturePane)pane).Material);
                 if (pane is IWindowPane)
                 {
-                    ((IWindowPane)pane).Content.MaterialIndex = (ushort)materials.IndexOf(((IWindowPane)pane).Content.Material);
+                    ((IWindowPane)pane).Content.MaterialIndex = ResolveIndex(((IWindowPane)pane).Content.Material);
                     foreach (var window in ((IWindowPane)pane).WindowFrames)
-                        window.MaterialIndex = (ushort)materials.IndexOf(window.Material);
+                        window.MaterialIndex = ResolveIndex(window.Material);
                 }
                 if (pane is ITextPane)
-                    ((ITextPane)pane).MaterialIndex = (ushort)materials.IndexOf(((ITextPane)pane).Material);
+                    ((ITextPane)pane).MaterialIndex = ResolveIndex(((ITextPane)pane).Material);
             }
         }
 
@@ -2347,6 +2442,125 @@ namespace LayoutBXLYT
         {
             foreach (var mat in Materials)
                 mat.TryRemoveTexture(texture);
+        }
+
+        public void SyncMaterialTextureIdsByName(bool removeMissing = true)
+        {
+            if (Materials == null || Textures == null)
+                return;
+
+            foreach (var mat in Materials)
+            {
+                if (mat?.TextureMaps == null)
+                    continue;
+
+                bool materialChanged = false;
+
+                for (int i = mat.TextureMaps.Length - 1; i >= 0; i--)
+                {
+                    var texMap = mat.TextureMaps[i];
+                    if (texMap == null)
+                    {
+                        if (removeMissing)
+                        {
+                            mat.RemoveTexture(i);
+                            materialChanged = true;
+                        }
+                        continue;
+                    }
+
+                    int newIndex = FindTextureIndexByName(texMap.Name);
+                    if (newIndex < 0)
+                    {
+                        if (removeMissing)
+                        {
+                            mat.RemoveTexture(i);
+                            materialChanged = true;
+                        }
+                        continue;
+                    }
+
+                    short expectedId = (short)newIndex;
+                    string expectedName = Textures[newIndex];
+
+                    if (texMap.ID != expectedId || !string.Equals(texMap.Name, expectedName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        texMap.ID = expectedId;
+                        texMap.Name = expectedName;
+                        materialChanged = true;
+                    }
+                }
+
+                if (materialChanged && mat is LayoutBXLYT.Revolution.Material revMat)
+                {
+                    // Revolution materials can preserve raw bytes; mark dirty so remapped IDs are serialized.
+                    revMat.MarkEdited();
+                }
+            }
+        }
+
+        private static string NormalizeTextureName(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            return Path.GetFileName(value.Replace('\\', '/'));
+        }
+
+        private static string NormalizeTextureStem(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            return Path.GetFileNameWithoutExtension(value.Replace('\\', '/'));
+        }
+
+        private int FindTextureIndexByName(string textureName)
+        {
+            if (Textures == null || string.IsNullOrEmpty(textureName))
+                return -1;
+
+            string normalized = NormalizeTextureName(textureName);
+            string stem = NormalizeTextureStem(textureName);
+
+            for (int i = 0; i < Textures.Count; i++)
+            {
+                string listName = Textures[i];
+                if (string.Equals(listName, textureName, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+
+            for (int i = 0; i < Textures.Count; i++)
+            {
+                string listName = Textures[i];
+                if (string.Equals(NormalizeTextureName(listName), normalized, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+
+            // Fallback to stem only when it maps uniquely.
+            int foundIndex = -1;
+            for (int i = 0; i < Textures.Count; i++)
+            {
+                if (string.Equals(NormalizeTextureStem(Textures[i]), stem, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (foundIndex != -1)
+                        return -1;
+                    foundIndex = i;
+                }
+            }
+
+            if (foundIndex != -1)
+                return foundIndex;
+
+            return -1;
+        }
+
+        public void ReindexTextureReferencesAfterRemove(int removedIndex, string removedTextureName = null)
+        {
+            if (removedIndex < 0 || Materials == null)
+                return;
+
+            SyncMaterialTextureIdsByName(true);
         }
 
         public BxlytMaterial SearchMaterial(string name)
@@ -2415,29 +2629,24 @@ namespace LayoutBXLYT
                 if (panes[i] is IWindowPane)
                 {
                     var wnd = panes[i] as IWindowPane;
-
-                    List<BxlytMaterial> materials = new List<BxlytMaterial>();
-                    var matC = wnd.Content.Material;
-                    materials.Add(matC);
-                    foreach (var windowFrame in wnd.WindowFrames)
-                        materials.Add(windowFrame.Material);
-
-                    TryRemoveMaterial(materials);
-                    materials.Clear();
+                    if (wnd.Content?.Material != null)
+                        TryRemoveMaterial(wnd.Content.Material);
+                    if (wnd.WindowFrames != null)
+                    {
+                        foreach (var frame in wnd.WindowFrames)
+                        {
+                            if (frame.Material != null)
+                                TryRemoveMaterial(frame.Material);
+                        }
+                    }
                 }
-            }
 
-            List<BasePane> topMostPanes = new List<BasePane>();
-            GetTopMostPanes(panes, topMostPanes, rootPane);
+                if (panes[i].Parent != null)
+                    panes[i].Parent.Childern.Remove(panes[i]);
 
-            foreach (var pane in topMostPanes)
-            {
-                pane.Parent.NodeWrapper.Nodes.Remove(pane.NodeWrapper);
-                pane.Parent.Childern.Remove(pane);
-            }
+                if (panes[i].NodeWrapper?.Parent != null)
+                    panes[i].NodeWrapper.Parent.Nodes.Remove(panes[i].NodeWrapper);
 
-            for (int i = 0; i < panes.Count; i++)
-            {
                 if (PaneLookup.ContainsKey(panes[i].Name))
                     PaneLookup.Remove(panes[i].Name);
             }
@@ -2495,15 +2704,21 @@ namespace LayoutBXLYT
         public bool TryRemoveTexture(string name)
         {
             int removeIndex = -1;
+            string normalizedName = string.IsNullOrEmpty(name) ? string.Empty : Path.GetFileName(name.Replace('\\', '/'));
             for (int i = 0; i < TextureMaps?.Length; i++)
             {
-                if (TextureMaps[i].Name == name)
+                if (TextureMaps[i] == null)
+                    continue;
+
+                string mapName = TextureMaps[i].Name;
+                if (string.Equals(mapName, name, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetFileName((mapName ?? string.Empty).Replace('\\', '/')), normalizedName, StringComparison.OrdinalIgnoreCase))
                     removeIndex = i;
             }
 
             if (removeIndex != -1)
             {
-                TextureMaps = TextureMaps.RemoveAt(removeIndex);
+                RemoveTexture(removeIndex);
                 return true;
             }
 
@@ -2531,8 +2746,46 @@ namespace LayoutBXLYT
             cloned.BlendModeLogic = CloneReference(BlendModeLogic);
             cloned.AlphaCompare = CloneReference(AlphaCompare);
 
+            cloned.BlackColor = BlackColor == null ? null : new STColor8(BlackColor.R, BlackColor.G, BlackColor.B, BlackColor.A);
+            cloned.WhiteColor = WhiteColor == null ? null : new STColor8(WhiteColor.R, WhiteColor.G, WhiteColor.B, WhiteColor.A);
+            CloneColorProperties(cloned);
+
             cloned.animController = CloneMaterialAnimController(animController);
             return cloned;
+        }
+
+        private static void CloneColorProperties(BxlytMaterial target)
+        {
+            if (target == null)
+                return;
+
+            var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            foreach (var property in target.GetType().GetProperties(flags))
+            {
+                if (!property.CanRead || !property.CanWrite || property.GetIndexParameters().Length > 0)
+                    continue;
+
+                if (property.PropertyType == typeof(STColor8))
+                {
+                    var color = property.GetValue(target) as STColor8;
+                    if (color != null)
+                        property.SetValue(target, new STColor8(color.R, color.G, color.B, color.A));
+                }
+                else if (property.PropertyType == typeof(STColor8[]))
+                {
+                    var colors = property.GetValue(target) as STColor8[];
+                    if (colors == null)
+                        continue;
+
+                    var clonedColors = new STColor8[colors.Length];
+                    for (int i = 0; i < colors.Length; i++)
+                    {
+                        var color = colors[i];
+                        clonedColors[i] = color == null ? null : new STColor8(color.R, color.G, color.B, color.A);
+                    }
+                    property.SetValue(target, clonedColors);
+                }
+            }
         }
 
         protected static T CloneReference<T>(T source) where T : class

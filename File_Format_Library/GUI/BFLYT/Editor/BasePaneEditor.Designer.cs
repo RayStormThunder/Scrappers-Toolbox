@@ -33,6 +33,7 @@
             this.userNameTB = new Toolbox.Library.Forms.STTextBox();
             this.stLabel2 = new Toolbox.Library.Forms.STLabel();
             this.nameTB = new Toolbox.Library.Forms.STTextBox();
+            this.nameLengthLabel = new Toolbox.Library.Forms.STLabel();
             this.stLabel1 = new Toolbox.Library.Forms.STLabel();
             this.stDropDownPanel2 = new Toolbox.Library.Forms.STDropDownPanel();
             this.rotZUD = new BarSlider.BarSlider();
@@ -108,6 +109,7 @@
             this.stDropDownPanel1.Controls.Add(this.userNameTB);
             this.stDropDownPanel1.Controls.Add(this.stLabel2);
             this.stDropDownPanel1.Controls.Add(this.nameTB);
+            this.stDropDownPanel1.Controls.Add(this.nameLengthLabel);
             this.stDropDownPanel1.Controls.Add(this.stLabel1);
             this.stDropDownPanel1.ExpandedHeight = 0;
             this.stDropDownPanel1.IsExpanded = true;
@@ -147,6 +149,15 @@
             this.nameTB.Size = new System.Drawing.Size(230, 20);
             this.nameTB.TabIndex = 2;
             this.nameTB.TextChanged += new System.EventHandler(this.nameTB_TextChanged);
+            // 
+            // nameLengthLabel
+            // 
+            this.nameLengthLabel.AutoSize = true;
+            this.nameLengthLabel.Location = new System.Drawing.Point(319, 39);
+            this.nameLengthLabel.Name = "nameLengthLabel";
+            this.nameLengthLabel.Size = new System.Drawing.Size(28, 13);
+            this.nameLengthLabel.TabIndex = 54;
+            this.nameLengthLabel.Text = "0/16";
             // 
             // stLabel1
             // 
@@ -1058,6 +1069,7 @@
         private Toolbox.Library.Forms.STTextBox userNameTB;
         private Toolbox.Library.Forms.STLabel stLabel2;
         private Toolbox.Library.Forms.STTextBox nameTB;
+        private Toolbox.Library.Forms.STLabel nameLengthLabel;
         private Toolbox.Library.Forms.STLabel stLabel1;
         private Toolbox.Library.Forms.STDropDownPanel stDropDownPanel2;
         private BarSlider.BarSlider rotZUD;

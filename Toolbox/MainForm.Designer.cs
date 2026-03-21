@@ -80,6 +80,7 @@
             this.saveToolStripButton = new System.Windows.Forms.ToolStripButton();
             this.updateToolstrip = new System.Windows.Forms.ToolStripButton();
             this.openUserFolderToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.createTextureMapToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.menuStrip1.SuspendLayout();
             this.stPanel1.SuspendLayout();
             this.tabControlContextMenuStrip.SuspendLayout();
@@ -174,6 +175,14 @@
             this.saveAsToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
             this.saveAsToolStripMenuItem.Text = "Save As";
             this.saveAsToolStripMenuItem.Click += new System.EventHandler(this.saveAsToolStripMenuItem_Click);
+            // 
+            // createTextureMapToolStripMenuItem
+            // 
+            this.createTextureMapToolStripMenuItem.Enabled = false;
+            this.createTextureMapToolStripMenuItem.Name = "createTextureMapToolStripMenuItem";
+            this.createTextureMapToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.createTextureMapToolStripMenuItem.Text = "Create Texture Map";
+            this.createTextureMapToolStripMenuItem.Click += new System.EventHandler(this.createTextureMapToolStripMenuItem_Click);
             // 
             // exitToolStripMenuItem
             // 
@@ -622,5 +631,6 @@
         private System.Windows.Forms.ToolStripMenuItem batchRenameBNTXToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem donateToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem openUserFolderToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem createTextureMapToolStripMenuItem;
     }
 }

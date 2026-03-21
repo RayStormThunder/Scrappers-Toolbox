@@ -44,6 +44,7 @@
             this.objectEditorMenu = new Toolbox.Library.Forms.STMenuStrip();
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.createTextureMapToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.viewToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sortToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.dockSearchListToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -252,7 +253,8 @@
             // fileToolStripMenuItem
             // 
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.openToolStripMenuItem});
+            this.openToolStripMenuItem,
+            this.createTextureMapToolStripMenuItem});
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             this.fileToolStripMenuItem.Size = new System.Drawing.Size(37, 22);
             this.fileToolStripMenuItem.Text = "File";
@@ -260,9 +262,16 @@
             // openToolStripMenuItem
             // 
             this.openToolStripMenuItem.Name = "openToolStripMenuItem";
-            this.openToolStripMenuItem.Size = new System.Drawing.Size(117, 22);
+            this.openToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
             this.openToolStripMenuItem.Text = "Add File";
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
+            // 
+            // createTextureMapToolStripMenuItem
+            // 
+            this.createTextureMapToolStripMenuItem.Name = "createTextureMapToolStripMenuItem";
+            this.createTextureMapToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.createTextureMapToolStripMenuItem.Text = "Create Texture Map";
+            this.createTextureMapToolStripMenuItem.Click += new System.EventHandler(this.createTextureMapToolStripMenuItem_Click);
             // 
             // viewToolStripMenuItem
             // 
@@ -348,6 +357,7 @@
         private STMenuStrip objectEditorMenu;
         private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem openToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem createTextureMapToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem viewToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem sortToolStripMenuItem;
         private STContextMenuStrip treeNodeContextMenu;

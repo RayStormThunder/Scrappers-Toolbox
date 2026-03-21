@@ -65,7 +65,8 @@ namespace LayoutBXLYT
             Text = $"Scrapper's Toolbox Layout Editor";
 
             chkAutoKey.Enabled = false;
-            chkAutoKey.ForeColor = FormThemes.BaseTheme.FormForeColor;
+            chkAutoKey.ForeColor = Color.White;
+            transformDataToAnimationDataChk.ForeColor = Color.White;
 
             CustomMapper = new LayoutCustomPaneMapper();
 
@@ -93,6 +94,7 @@ namespace LayoutBXLYT
             multiclickBehaviorCB.Items.Add("Absolute");
             multiclickBehaviorCB.Items.Add("Relative");
             multiclickBehaviorCB.SelectedIndex = (int)Runtime.LayoutEditor.MulticlickBehavior;
+            transformDataToAnimationDataChk.Checked = Runtime.LayoutEditor.TransformDataToAnimationData;
 
             var addBoundryPaneItem = new ToolStripMenuItem("Add Boundry Pane");
             addBoundryPaneItem.Click += addBoundryPaneToolStripMenuItem_Click;
@@ -161,6 +163,7 @@ namespace LayoutBXLYT
         private LytAnimationWindow AnimationWindow;
         private readonly DeserializeDockContent dockContentDeserializer;
         private readonly HashSet<DockContent> dockLayoutTrackedContents = new HashSet<DockContent>();
+        private readonly Dictionary<string, LayoutHierarchy.HierarchyState> layoutHierarchyStates = new Dictionary<string, LayoutHierarchy.HierarchyState>();
         private bool isClosingEditor = false;
 
         private string DockLayoutDirectory => System.IO.Path.Combine(
@@ -528,17 +531,59 @@ namespace LayoutBXLYT
 
             Text = $"Scrapper's Toolbox Layout Editor [{activeLayout.FileName}]";
 
+            RebuildAnimationHierarchyEntries();
+
             if (LayoutProperties != null)
                 LayoutProperties.Reset();
             if (LayoutHierarchy != null)
                 LayoutHierarchy.LoadLayout(activeLayout, ObjectSelected);
             if (LayoutTextureList != null)
                 LayoutTextureList.LoadTextures(this, activeLayout, Textures);
+            if (LayoutPaneEditor != null)
+            {
+                LayoutPaneEditor.Text = "Properties";
+                LayoutPaneEditor.LoadProperties(activeLayout);
+            }
             if (TextConverter != null)
             {
                 if (ActiveLayout.FileInfo is BFLYT)
                     TextConverter.LoadLayout((BFLYT)ActiveLayout.FileInfo);
             }
+        }
+
+        private string GetLayoutStateKey(BxlytHeader layout)
+        {
+            if (layout == null)
+                return string.Empty;
+
+            if (!string.IsNullOrEmpty(layout.FileInfo?.FilePath))
+                return layout.FileInfo.FilePath.ToLowerInvariant();
+
+            if (!string.IsNullOrEmpty(layout.FileName))
+                return layout.FileName.ToLowerInvariant();
+
+            return layout.GetHashCode().ToString();
+        }
+
+        private void SaveLayoutUiState(BxlytHeader layout)
+        {
+            if (layout == null || LayoutHierarchy == null || LayoutHierarchy.IsDisposed)
+                return;
+
+            var state = CaptureHierarchyViewState();
+            if (state == null)
+                return;
+
+            layoutHierarchyStates[GetLayoutStateKey(layout)] = state;
+        }
+
+        private void RestoreLayoutUiState(BxlytHeader layout)
+        {
+            if (layout == null || LayoutHierarchy == null || LayoutHierarchy.IsDisposed)
+                return;
+
+            if (layoutHierarchyStates.TryGetValue(GetLayoutStateKey(layout), out var state))
+                RestoreHierarchyViewState(state);
         }
 
         private void OnObjectChanged(object sender, EventArgs e)
@@ -801,7 +846,6 @@ namespace LayoutBXLYT
         {
             if (node.Tag is BasePane)
             {
-                ((BasePane)node.Tag).DisplayInEditor = isChecked;
                 ((BasePane)node.Tag).Visible = isChecked;
             }
 
@@ -1185,9 +1229,16 @@ namespace LayoutBXLYT
             if (viewer != null)
             {
                 var file = viewer.LayoutFile;
-                ActiveLayout = file;
-                ReloadEditors(file);
+                var previousLayout = ActiveLayout;
+                if (previousLayout != null && previousLayout != file)
+                    SaveLayoutUiState(previousLayout);
+
                 ActiveViewport = viewer;
+                ActiveLayout = file;
+                if (AnimationPanel != null)
+                    AnimationPanel.SetViewport(ActiveViewport.GetGLControl());
+                ReloadEditors(file);
+                RestoreLayoutUiState(file);
                 UpdateUndo();
                 viewer.UpdateViewport();
 
@@ -1467,6 +1518,12 @@ namespace LayoutBXLYT
                 return;
 
             Runtime.LayoutEditor.MulticlickBehavior = (Runtime.LayoutEditor.MulticlickBehaviorMode)multiclickBehaviorCB.SelectedIndex;
+            Toolbox.Library.Config.Save();
+        }
+
+        private void transformDataToAnimationDataChk_CheckedChanged(object sender, EventArgs e)
+        {
+            Runtime.LayoutEditor.TransformDataToAnimationData = transformDataToAnimationDataChk.Checked;
             Toolbox.Library.Config.Save();
         }
 
@@ -1806,6 +1863,24 @@ namespace LayoutBXLYT
             }
             if (pane is IWindowPane)
             {
+                var windowPane = (IWindowPane)pane;
+                if (windowPane.Content?.Material != null)
+                {
+                    windowPane.Content.Material.Name = $"{pane.Name}_C";
+                    windowPane.Content.MaterialIndex = (ushort)ActiveLayout.AddMaterial(windowPane.Content.Material);
+                }
+
+                if (windowPane.WindowFrames != null)
+                {
+                    for (int i = 0; i < windowPane.WindowFrames.Count; i++)
+                    {
+                        var frame = windowPane.WindowFrames[i];
+                        if (frame?.Material == null)
+                            continue;
+
+                        frame.MaterialIndex = (ushort)ActiveLayout.AddMaterial(frame.Material);
+                    }
+                }
             }
 
             pane.NodeWrapper = LayoutHierarchy.CreatePaneWrapper(pane);

@@ -14,13 +14,16 @@ namespace LayoutBXLYT
 {
     public partial class BasePaneEditor : EditorPanelBase
     {
+        private const int MaxPaneNameLength = 16;
         private bool Loaded = false;
     
         public BasePaneEditor()
         {
             InitializeComponent();
 
+            nameTB.MaxLength = MaxPaneNameLength;
             userNameTB.MaxLength = 8;
+            UpdateNameLengthCounter();
 
             stDropDownPanel1.ResetColors();
             stDropDownPanel2.ResetColors();
@@ -82,6 +85,7 @@ namespace LayoutBXLYT
 
             nameTB.Bind(pane, "Name");
             userNameTB.Bind(pane, "UserDataInfo");
+            UpdateNameLengthCounter();
             partPaneScalingCB.SelectedItem = (PartPaneScaling)pane.PaneMagFlags;
 
             SetTransform();
@@ -389,43 +393,147 @@ namespace LayoutBXLYT
                     if (pane == null || pane == ActivePane)
                         continue;
 
+                    var paneOldTranslate = pane.Translate;
+                    var paneOldRotate = pane.Rotate;
+                    var paneOldScale = pane.Scale;
+                    float paneOldWidth = pane.Width;
+                    float paneOldHeight = pane.Height;
+
+                    Syroot.Maths.Vector3F paneNewTranslate;
+                    Syroot.Maths.Vector3F paneNewRotate;
+                    Syroot.Maths.Vector2F paneNewScale;
+                    float paneNewWidth;
+                    float paneNewHeight;
+
                     if (relative)
                     {
-                        pane.Translate = new Syroot.Maths.Vector3F(
-                            pane.Translate.X + dTransX,
-                            pane.Translate.Y + dTransY,
-                            pane.Translate.Z + dTransZ);
+                        paneNewTranslate = new Syroot.Maths.Vector3F(
+                            paneOldTranslate.X + dTransX,
+                            paneOldTranslate.Y + dTransY,
+                            paneOldTranslate.Z + dTransZ);
 
-                        pane.Rotate = new Syroot.Maths.Vector3F(
-                            pane.Rotate.X + dRotX,
-                            pane.Rotate.Y + dRotY,
-                            pane.Rotate.Z + dRotZ);
+                        paneNewRotate = new Syroot.Maths.Vector3F(
+                            paneOldRotate.X + dRotX,
+                            paneOldRotate.Y + dRotY,
+                            paneOldRotate.Z + dRotZ);
 
-                        pane.Scale = new Syroot.Maths.Vector2F(
-                            pane.Scale.X + dScaleX,
-                            pane.Scale.Y + dScaleY);
+                        paneNewScale = new Syroot.Maths.Vector2F(
+                            paneOldScale.X + dScaleX,
+                            paneOldScale.Y + dScaleY);
 
-                        pane.Width += dWidth;
-                        pane.Height += dHeight;
+                        paneNewWidth = paneOldWidth + dWidth;
+                        paneNewHeight = paneOldHeight + dHeight;
                     }
                     else
                     {
-                        pane.Translate = new Syroot.Maths.Vector3F(
+                        paneNewTranslate = new Syroot.Maths.Vector3F(
                             newTranslate.X, newTranslate.Y, newTranslate.Z);
 
-                        pane.Rotate = new Syroot.Maths.Vector3F(
+                        paneNewRotate = new Syroot.Maths.Vector3F(
                             newRotate.X, newRotate.Y, newRotate.Z);
 
-                        pane.Scale = new Syroot.Maths.Vector2F(
+                        paneNewScale = new Syroot.Maths.Vector2F(
                             newScale.X, newScale.Y);
 
-                        pane.Width = newWidth;
-                        pane.Height = newHeight;
+                        paneNewWidth = newWidth;
+                        paneNewHeight = newHeight;
                     }
+
+                    pane.Translate = paneNewTranslate;
+                    pane.Rotate = paneNewRotate;
+                    pane.Scale = paneNewScale;
+                    pane.Width = paneNewWidth;
+                    pane.Height = paneNewHeight;
+
+                    SyncPaneTransformToAnimations(pane,
+                        paneOldTranslate, paneOldRotate, paneOldScale, paneOldWidth, paneOldHeight,
+                        paneNewTranslate, paneNewRotate, paneNewScale, paneNewWidth, paneNewHeight);
                 }
+
+                SyncPaneTransformToAnimations(ActivePane,
+                    oldTranslate, oldRotate, oldScale, oldWidth, oldHeight,
+                    newTranslate, newRotate, newScale, newWidth, newHeight);
             }
 
             parentEditor.PropertyChanged?.Invoke(sender, e);
+        }
+
+        private void SyncPaneTransformToAnimations(BasePane pane,
+            Syroot.Maths.Vector3F oldTranslate, Syroot.Maths.Vector3F oldRotate, Syroot.Maths.Vector2F oldScale, float oldWidth, float oldHeight,
+            Syroot.Maths.Vector3F newTranslate, Syroot.Maths.Vector3F newRotate, Syroot.Maths.Vector2F newScale, float newWidth, float newHeight)
+        {
+            if (!Runtime.LayoutEditor.TransformDataToAnimationData)
+                return;
+            if (pane == null)
+                return;
+
+            var animations = parentEditor.GetAnimations();
+            if (animations == null || animations.Count == 0)
+                return;
+
+            foreach (var animation in animations)
+            {
+                if (animation?.AnimationInfo?.Entries == null)
+                    continue;
+
+                foreach (var entry in animation.AnimationInfo.Entries)
+                {
+                    if (entry == null || entry.Target != AnimationTarget.Pane)
+                        continue;
+                    if (!string.Equals(entry.Name, pane.Name, StringComparison.Ordinal))
+                        continue;
+
+                    foreach (var tag in entry.Tags)
+                    {
+                        if (tag?.Entries == null || string.IsNullOrEmpty(tag.Tag) || !tag.Tag.EndsWith("LPA", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        foreach (var tagEntry in tag.Entries)
+                        {
+                            if (tagEntry?.KeyFrames == null || tagEntry.KeyFrames.Count == 0)
+                                continue;
+
+                            if (tagEntry.AnimationTarget > (byte)LPATarget.SizeY)
+                                continue;
+
+                            var target = (LPATarget)tagEntry.AnimationTarget;
+                            float oldValue = GetTransformValueByTarget(target, oldTranslate, oldRotate, oldScale, oldWidth, oldHeight);
+                            float newValue = GetTransformValueByTarget(target, newTranslate, newRotate, newScale, newWidth, newHeight);
+
+                            if (Math.Abs(newValue - oldValue) < 0.0001f)
+                                continue;
+
+                            foreach (var keyFrame in tagEntry.KeyFrames)
+                            {
+                                if (keyFrame == null)
+                                    continue;
+
+                                if (Math.Abs(keyFrame.Value - oldValue) < 0.0001f)
+                                    keyFrame.Value = newValue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static float GetTransformValueByTarget(LPATarget target,
+            Syroot.Maths.Vector3F translate, Syroot.Maths.Vector3F rotate, Syroot.Maths.Vector2F scale, float width, float height)
+        {
+            switch (target)
+            {
+                case LPATarget.TranslateX: return translate.X;
+                case LPATarget.TranslateY: return translate.Y;
+                case LPATarget.TranslateZ: return translate.Z;
+                case LPATarget.RotateX: return rotate.X;
+                case LPATarget.RotateY: return rotate.Y;
+                case LPATarget.RotateZ: return rotate.Z;
+                case LPATarget.ScaleX: return scale.X;
+                case LPATarget.ScaleY: return scale.Y;
+                case LPATarget.SizeX: return width;
+                case LPATarget.SizeY: return height;
+                default: return 0.0f;
+            }
         }
 
         private void SetParentOrientation()
@@ -537,9 +645,18 @@ namespace LayoutBXLYT
         }
 
         private void nameTB_TextChanged(object sender, EventArgs e) {
+            UpdateNameLengthCounter();
+
             if (ActivePane.NodeWrapper != null)
                 ActivePane.NodeWrapper.Text = nameTB.Text;
             parentEditor.PropertyChanged?.Invoke(sender, e);
+        }
+
+        private void UpdateNameLengthCounter()
+        {
+            int length = nameTB?.Text?.Length ?? 0;
+            nameLengthLabel.Text = $"{length}/{MaxPaneNameLength}";
+            nameLengthLabel.ForeColor = length >= MaxPaneNameLength ? Color.Red : FormThemes.BaseTheme.FormForeColor;
         }
 
         private void paneVisibleChk_CheckedChanged(object sender, EventArgs e) {

@@ -408,12 +408,20 @@ namespace Toolbox.Library
         }
 
         private void nextButton_Click(object sender, EventArgs e) {
-            if (animationTrackBar.CurrentFrame < animationTrackBar.FrameCount - 1)
-                animationTrackBar.CurrentFrame++;
+            decimal minFrame = currentFrameUpDown.Minimum;
+            decimal maxFrame = currentFrameUpDown.Maximum;
+            decimal current = currentFrameUpDown.Value;
+
+            decimal next = current >= maxFrame ? minFrame : current + 1;
+            currentFrameUpDown.Value = next;
         }
         private void prevButton_Click(object sender, EventArgs e) {
-              if (animationTrackBar.CurrentFrame > 0)
-                animationTrackBar.CurrentFrame--;
+            decimal minFrame = currentFrameUpDown.Minimum;
+            decimal maxFrame = currentFrameUpDown.Maximum;
+            decimal current = currentFrameUpDown.Value;
+
+            decimal prev = current <= minFrame ? maxFrame : current - 1;
+            currentFrameUpDown.Value = prev;
         }
 
         private void animationTrackBar_Scroll(object sender, EventArgs e)

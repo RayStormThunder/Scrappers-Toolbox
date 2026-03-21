@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Drawing.Drawing2D;
 using OpenTK.Graphics.OpenGL;
 using OpenTK;
 using Toolbox.Library.Forms;
@@ -21,6 +22,7 @@ namespace LayoutBXLYT
         public LayoutUndoManager UndoManger = new LayoutUndoManager();
 
         public List<BasePane> SelectedPanes = new List<BasePane>();
+        private BasePane contextPane;
 
         public Camera2D Camera = new Camera2D();
 
@@ -574,9 +576,12 @@ namespace LayoutBXLYT
                             bitmap = fontFile.GetBitmap(textPane.Text, false, pane);
                     }
 
-                    if (bitmap != null)
+                    if (bitmap == null)
+                        bitmap = CreateFallbackTextBitmap(textPane, pane);
+
+                    if (bitmap != null || textPane.RenderableFont != null)
                         BxlytToGL.DrawTextbox(pane, Camera, GameWindow, bitmap, paneAlpha,
-                            Textures, SelectedPanes, textPane.RenderableFont == null, isSelected);
+                            Textures, SelectedPanes, bitmap != null, isSelected);
                     else
                         DrawDefaultPane(shader, pane, isSelected);
                 }
@@ -626,6 +631,63 @@ namespace LayoutBXLYT
             GL.Vertex2(rect.BottomRightPoint);
             GL.Vertex2(rect.BottomLeftPoint);
             GL.End();
+        }
+
+        private Bitmap CreateFallbackTextBitmap(ITextPane textPane, BasePane pane)
+        {
+            if (string.IsNullOrEmpty(textPane.Text))
+                return null;
+
+            int width = Math.Max(1, (int)Math.Ceiling(pane.Width));
+            int height = Math.Max(1, (int)Math.Ceiling(pane.Height));
+            int lineCount = Math.Max(1, textPane.Text.Count(c => c == '\n') + 1);
+
+            float sizeFromHeight = (height / (float)lineCount) * 0.75f;
+            float fontSize = Math.Max(8f, Math.Min(64f, sizeFromHeight));
+
+            var bitmap = new Bitmap(width, height);
+            using (var g = Graphics.FromImage(bitmap))
+            using (var brush = new SolidBrush(Color.White))
+            using (var font = new Font(FontFamily.GenericSansSerif, fontSize, GraphicsUnit.Pixel))
+            {
+                g.Clear(Color.Transparent);
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+
+                var format = new StringFormat();
+                switch (textPane.HorizontalAlignment)
+                {
+                    case OriginX.Left:
+                        format.Alignment = StringAlignment.Near;
+                        break;
+                    case OriginX.Right:
+                        format.Alignment = StringAlignment.Far;
+                        break;
+                    default:
+                        format.Alignment = StringAlignment.Center;
+                        break;
+                }
+
+                switch (textPane.VerticalAlignment)
+                {
+                    case OriginY.Top:
+                        format.LineAlignment = StringAlignment.Near;
+                        break;
+                    case OriginY.Bottom:
+                        format.LineAlignment = StringAlignment.Far;
+                        break;
+                    default:
+                        format.LineAlignment = StringAlignment.Center;
+                        break;
+                }
+
+                format.FormatFlags = StringFormatFlags.LineLimit;
+                format.Trimming = StringTrimming.EllipsisCharacter;
+
+                var bounds = new RectangleF(0, 0, width, height);
+                g.DrawString(textPane.Text, font, brush, bounds, format);
+            }
+
+            return bitmap;
         }
 
         private void DrawDefaultPane(BxlytShader shader, BasePane pane, bool isSelectionBox = false)
@@ -904,6 +966,9 @@ namespace LayoutBXLYT
                 RenderEditor();
                 var coords = OpenGLHelper.convertScreenToWorldCoords(e.Location.X, e.Location.Y);
                 pickOriginMouse = coords;
+                contextPane = null;
+
+                SearchHit(LayoutFile.RootPane, coords.X, coords.Y, ref contextPane);
 
                 GL.PopMatrix();
 
@@ -924,16 +989,16 @@ namespace LayoutBXLYT
                 stContextMenuStrip1.Items.Clear();
                 stContextMenuStrip1.Items.Add(addPanes);
                 stContextMenuStrip1.Items.Add(selectOverlapping);
-                stContextMenuStrip1.Items.Add(new STToolStripItem("Show All Hidden Panes", ShowAllPaneAction));
+                stContextMenuStrip1.Items.Add(new STToolStripItem("Show Hidden Panes in Viewer", ShowAllPaneAction));
                 stContextMenuStrip1.Items.Add(new STToolStripItem("Paste Pane", PastePaneAction) { Enabled = ParentEditor.HasHierarchyCopiedPanes() });
 
-                if (SelectedPanes.Count > 0)
+                if (SelectedPanes.Count > 0 || contextPane != null)
                 {
                     stContextMenuStrip1.Items.Add(new STToolStripSeparator());
                     stContextMenuStrip1.Items.Add(new STToolStripItem("Copy Pane", CopyPaneAction));
                     stContextMenuStrip1.Items.Add(new STToolStripItem("Edit Group"));
                     stContextMenuStrip1.Items.Add(new STToolStripItem("Delete Selected Panes", DeletePaneAction));
-                    stContextMenuStrip1.Items.Add(new STToolStripItem("Hide Selected Panes", HidePaneAction));
+                    stContextMenuStrip1.Items.Add(new STToolStripItem("Toggle Visibility in Viewer", HidePaneAction));
                 }
 
                 stContextMenuStrip1.Show(Cursor.Position);
@@ -1019,10 +1084,41 @@ namespace LayoutBXLYT
 
         private void HideSelectedPanes()
         {
-            UndoManger.AddToUndo(new LayoutUndoManager.UndoActionPaneHide(SelectedPanes));
+            var rootTargets = new List<BasePane>();
+            if (contextPane != null)
+            {
+                rootTargets.Add(contextPane);
+            }
+            else
+            {
+                rootTargets.AddRange(SelectedPanes.Where(x => x != null));
+            }
+
+            if (rootTargets.Count == 0)
+                return;
+
+            var allTargets = new List<BasePane>();
+            foreach (var pane in rootTargets)
+                AddPaneWithChildren(pane, allTargets);
+
+            if (allTargets.Count == 0)
+                return;
+
+            bool showInViewer = !rootTargets[0].DisplayInEditor;
+            UndoManger.AddToUndo(new LayoutUndoManager.UndoActionPaneHide(allTargets, !showInViewer));
             ParentEditor?.UpdateHiearchyTree();
             SelectedPanes.Clear();
             glControl1.Invalidate();
+        }
+
+        private void AddPaneWithChildren(BasePane pane, List<BasePane> panes)
+        {
+            if (pane == null || panes.Contains(pane))
+                return;
+
+            panes.Add(pane);
+            foreach (var child in pane.Childern)
+                AddPaneWithChildren(child, panes);
         }
 
         private void ShowHiddenPanes()

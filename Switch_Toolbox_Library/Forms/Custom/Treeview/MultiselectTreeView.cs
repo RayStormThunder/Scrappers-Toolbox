@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace Toolbox.Library.Forms
@@ -189,23 +190,32 @@ namespace Toolbox.Library.Forms
 			node.BackColor = selected ? SystemColors.Highlight : Color.Empty;
 			if (selected)
 				node.ForeColor = SystemColors.HighlightText;
-			else if (UsesCheckedVisibilityState(node) && !node.Checked)
+			else if (TryGetPaneDisplayInEditor(node, out bool displayInEditor) && !displayInEditor)
 				node.ForeColor = FormThemes.BaseTheme.DisabledItemColor;
 			else
 				node.ForeColor = ForeColor;
 		}
 
-		private bool UsesCheckedVisibilityState(TreeNode node)
+		private bool TryGetPaneDisplayInEditor(TreeNode node, out bool displayInEditor)
 		{
+			displayInEditor = true;
 			if (!IsValidNode(node) || node.Tag == null)
 				return false;
 
-			// Only pane hierarchy nodes use Checked as a visibility state.
 			var type = node.Tag.GetType();
 			while (type != null)
 			{
 				if (type.Name == "BasePane")
-					return true;
+				{
+					var property = type.GetProperty("DisplayInEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+					if (property != null && property.PropertyType == typeof(bool))
+					{
+						displayInEditor = (bool)property.GetValue(node.Tag);
+						return true;
+					}
+
+					return false;
+				}
 				type = type.BaseType;
 			}
 

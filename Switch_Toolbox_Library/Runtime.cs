@@ -312,6 +312,10 @@ namespace Toolbox.Library
             public static DebugShading Shading = DebugShading.Default;
             public static TextureVisibilityMode VisibilityMode = TextureVisibilityMode.FollowsAnimation;
             public static MulticlickBehaviorMode MulticlickBehavior = MulticlickBehaviorMode.Absolute;
+            public static bool TransformDataToAnimationData = false;
+            public static bool AnimationWindowBoundsInitialized = false;
+            public static Point AnimationWindowLocation = new Point(60, 60);
+            public static Size AnimationWindowSize = new Size(907, 638);
 
             public enum DebugShading
             {

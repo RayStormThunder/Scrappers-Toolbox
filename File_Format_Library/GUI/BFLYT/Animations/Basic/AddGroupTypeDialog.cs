@@ -23,22 +23,32 @@ namespace LayoutBXLYT
 
             if (animGroup.Target == AnimationTarget.Pane)
             {
-                stComboBox1.Items.Add("PaneSRT");
-                stComboBox1.Items.Add("Visibility");
-                stComboBox1.Items.Add("TextureSRT");
-                stComboBox1.Items.Add("VertexColor");
+                AddTypeOption("PaneSRT");
+                AddTypeOption("Visibility");
+                AddTypeOption("TextureSRT");
+                AddTypeOption("VertexColor");
+                AddTypeOption("MaterialColor");
             }
             else
             {
-                stComboBox1.Items.Add("MaterialColor");
-                stComboBox1.Items.Add("TexturePattern");
-                stComboBox1.Items.Add("IndTextureSRT");
-                stComboBox1.Items.Add("AlphaTest");
-                stComboBox1.Items.Add("FontShadow");
-                stComboBox1.Items.Add("PerCharacterTransformCurve");
+                AddTypeOption("MaterialColor");
+                AddTypeOption("TexturePattern");
+                AddTypeOption("IndTextureSRT");
+                AddTypeOption("AlphaTest");
+                AddTypeOption("FontShadow");
+                AddTypeOption("PerCharacterTransformCurve");
             }
 
             stComboBox1.SelectedIndex = 0;
+        }
+
+        private void AddTypeOption(string option)
+        {
+            if (string.IsNullOrEmpty(option))
+                return;
+
+            if (!stComboBox1.Items.Contains(option))
+                stComboBox1.Items.Add(option);
         }
 
         public BxlanPaiTag AddEntry()

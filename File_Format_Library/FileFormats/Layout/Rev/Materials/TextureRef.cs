@@ -19,8 +19,10 @@ namespace LayoutBXLYT.Revolution
             MinFilterMode = FilterMode.Linear;
             MaxFilterMode = FilterMode.Linear;
 
-            if (header.Textures.Count > 0)
+            if (ID >= 0 && ID < header.Textures.Count)
                 Name = header.Textures[ID];
+            else
+                Name = string.Empty;
         }
 
         public void Write(FileWriter writer)

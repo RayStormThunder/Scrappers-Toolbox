@@ -65,8 +65,22 @@ namespace LayoutBXLYT
         }
 
         private bool isLoaded = false;
+        private bool suppressCheckedEvent = false;
         private EventHandler OnProperySelected;
         private BxlytHeader ActiveLayout;
+
+        private void SyncPaneNodeVisualState()
+        {
+            suppressCheckedEvent = true;
+            try
+            {
+                RefreshPaneNodeVisualState(treeView1.Nodes);
+            }
+            finally
+            {
+                suppressCheckedEvent = false;
+            }
+        }
 
         public class HierarchyState
         {
@@ -203,7 +217,7 @@ namespace LayoutBXLYT
             treeView1.EndUpdate();
 
             // Ensure pane checked/disabled visuals are fully synchronized after initial load and restore.
-            RefreshPaneNodeVisualState(treeView1.Nodes);
+            SyncPaneNodeVisualState();
             treeView1.Refresh();
 
             isLoaded = true;
@@ -222,9 +236,8 @@ namespace LayoutBXLYT
                 if (node.Tag is BasePane)
                 {
                     var pane = (BasePane)node.Tag;
-                    bool shown = pane.IsRoot || (pane.Visible && pane.DisplayInEditor);
-                    node.Checked = shown;
-                    node.ForeColor = shown ? treeView1.ForeColor : FormThemes.BaseTheme.DisabledItemColor;
+                    node.Checked = pane.IsRoot || pane.Visible;
+                    node.ForeColor = pane.DisplayInEditor ? treeView1.ForeColor : FormThemes.BaseTheme.DisabledItemColor;
                 }
                 else
                 {
@@ -248,10 +261,10 @@ namespace LayoutBXLYT
 
                 if (node.Tag is BasePane)
                 {
-                    if (node.Checked)
-                        node.ForeColor = treeView1.ForeColor;
-                    else
-                        node.ForeColor = FormThemes.BaseTheme.DisabledItemColor;
+                    var pane = node.Tag as BasePane;
+                    node.ForeColor = pane != null && pane.DisplayInEditor
+                        ? treeView1.ForeColor
+                        : FormThemes.BaseTheme.DisabledItemColor;
                 }
                 else
                 {
@@ -332,6 +345,7 @@ namespace LayoutBXLYT
 
         public void UpdateTree()
         {
+            SyncPaneNodeVisualState();
             treeView1.Refresh();
         }
 
@@ -542,13 +556,9 @@ namespace LayoutBXLYT
             paneNode.Text = pane.Name;
             paneNode.Tag = pane;
 
-            // Display-in-editor is an editor/runtime state; keep visible panes visible on initial load.
-            if (pane.Visible && !pane.DisplayInEditor)
-                pane.DisplayInEditor = true;
+            paneNode.Checked = pane.IsRoot || pane.Visible;
 
-            paneNode.Checked = pane.Visible && pane.DisplayInEditor;
-
-            if (!paneNode.Checked)
+            if (!pane.DisplayInEditor)
                 paneNode.ForeColor = FormThemes.BaseTheme.DisabledItemColor;
 
             string imageKey = "";
@@ -600,13 +610,8 @@ namespace LayoutBXLYT
 
         private void treeView1_AfterCheck(object sender, TreeViewEventArgs e)
         {
-            if (isLoaded)
+            if (isLoaded && !suppressCheckedEvent)
             {
-                if (!e.Node.Checked)
-                    e.Node.ForeColor = FormThemes.BaseTheme.DisabledItemColor;
-                else
-                    e.Node.ForeColor = treeView1.ForeColor;
-
                 OnProperySelected.Invoke("Checked", e);
             }
         }
@@ -616,25 +621,73 @@ namespace LayoutBXLYT
 
         }
 
-        private void TogglePane(object sender, EventArgs e)
-        {
-            foreach (TreeNode node in treeView1.SelectedNodes)
-                TogglePane(node);
-        }
-
-        private void TogglePane(TreeNode node)
+        private void SetPaneDisplayRecursive(TreeNode node, bool displayInViewer)
         {
             if (node == null)
                 return;
 
-            node.Checked = !node.Checked;
-
             if (node.Tag is BasePane)
             {
                 var pane = (BasePane)node.Tag;
-                pane.Visible = node.Checked;
-                pane.DisplayInEditor = node.Checked;
+                pane.DisplayInEditor = pane.IsRoot ? true : displayInViewer;
             }
+
+            foreach (TreeNode child in node.Nodes)
+                SetPaneDisplayRecursive(child, displayInViewer);
+        }
+
+        private void SetSelectedPaneDisplay(bool displayInViewer)
+        {
+            foreach (TreeNode node in treeView1.SelectedNodes)
+            {
+                if (node?.Tag is BasePane)
+                    SetPaneDisplayRecursive(node, displayInViewer);
+            }
+
+            SyncPaneNodeVisualState();
+            treeView1.Refresh();
+            ParentEditor?.UpdateViewport();
+        }
+
+        private void ToggleSelectedPaneDisplay()
+        {
+            TreeNode activeNode = treeView1.SelectedNodes.FirstOrDefault(x => x?.Tag is BasePane) ?? treeView1.SelectedNode;
+            if (activeNode?.Tag is BasePane)
+            {
+                var pane = (BasePane)activeNode.Tag;
+                SetSelectedPaneDisplay(!pane.DisplayInEditor);
+            }
+        }
+
+        private void ToggleSelectedPaneDisplay(object sender, EventArgs e)
+        {
+            ToggleSelectedPaneDisplay();
+        }
+
+        private void ToggleChildrenExpansion(TreeNode node)
+        {
+            if (node == null || node.Nodes.Count == 0)
+                return;
+
+            if (!node.IsExpanded)
+            {
+                node.ExpandAll();
+            }
+            else
+            {
+                CollapseNodeRecursive(node);
+            }
+        }
+
+        private void CollapseNodeRecursive(TreeNode node)
+        {
+            if (node == null)
+                return;
+
+            foreach (TreeNode child in node.Nodes)
+                CollapseNodeRecursive(child);
+
+            node.Collapse();
         }
 
         private void treeView1_KeyDown(object sender, KeyEventArgs e)
@@ -667,15 +720,11 @@ namespace LayoutBXLYT
                 return;
             }
 
-            foreach (var node in treeView1.SelectedNodes) {
-                if (node == null || node.Tag == null)
-                    continue;
-
-                if (e.KeyCode == Keys.H)
-                {
-                    if (node.Tag is BasePane)
-                        TogglePane(node);
-                }
+            if (e.Control && e.KeyCode == Keys.H)
+            {
+                ToggleSelectedPaneDisplay();
+                e.Handled = true;
+                return;
             }
         }
 
@@ -704,7 +753,7 @@ namespace LayoutBXLYT
                         Enabled = ParentEditor.SupportsPartPane()
                     });
                     ContexMenu.Items.Add(addPaneMenu);
-                    ContexMenu.Items.Add(new STToolStipMenuItem("Display Panes", null, TogglePane, Keys.Control | Keys.H));
+                    ContexMenu.Items.Add(new STToolStipMenuItem("Toggle Visibility in Viewer", null, ToggleSelectedPaneDisplay, Keys.Control | Keys.H));
 
                     var copyItem = new STToolStipMenuItem("Copy Pane", null, (o, args) => CopySelectedPanes(), Keys.Control | Keys.C);
                     var pasteItem = new STToolStipMenuItem("Paste Pane", null, (o, args) => PastePanesToContext(e.Node.Tag as BasePane), Keys.Control | Keys.V);
@@ -716,7 +765,12 @@ namespace LayoutBXLYT
                     ContexMenu.Items.Add(pasteItem);
                     ContexMenu.Items.Add(deleteItem);
 
-                //    ContexMenu.Items.Add(new STToolStipMenuItem("Display Children Panes", null, TogglePane, Keys.Control | Keys.H));
+                    if (e.Node.Nodes.Count > 0)
+                    {
+                        ContexMenu.Items.Add(new ToolStripSeparator());
+                        string expandToggleText = e.Node.IsExpanded ? "Collapse Children" : "Expand Children";
+                        ContexMenu.Items.Add(new STToolStipMenuItem(expandToggleText, null, (o, args) => ToggleChildrenExpansion(e.Node)));
+                    }
                     ContexMenu.Show(Cursor.Position);
                 }
 

@@ -325,6 +325,37 @@ namespace Toolbox.Library
                         if (Enum.TryParse(node.InnerText, out multiclickBehavior))
                             Runtime.LayoutEditor.MulticlickBehavior = multiclickBehavior;
                         break;
+                    case "LayoutTransformDataToAnimationData":
+                        bool.TryParse(node.InnerText, out Runtime.LayoutEditor.TransformDataToAnimationData);
+                        break;
+                    case "LayoutAnimationWindowX":
+                        if (SafeTryParseInt(node.InnerText, out int animWinX))
+                        {
+                            Runtime.LayoutEditor.AnimationWindowLocation = new Point(animWinX, Runtime.LayoutEditor.AnimationWindowLocation.Y);
+                            Runtime.LayoutEditor.AnimationWindowBoundsInitialized = true;
+                        }
+                        break;
+                    case "LayoutAnimationWindowY":
+                        if (SafeTryParseInt(node.InnerText, out int animWinY))
+                        {
+                            Runtime.LayoutEditor.AnimationWindowLocation = new Point(Runtime.LayoutEditor.AnimationWindowLocation.X, animWinY);
+                            Runtime.LayoutEditor.AnimationWindowBoundsInitialized = true;
+                        }
+                        break;
+                    case "LayoutAnimationWindowWidth":
+                        if (SafeTryParseInt(node.InnerText, out int animWinW))
+                        {
+                            Runtime.LayoutEditor.AnimationWindowSize = new Size(Math.Max(animWinW, 320), Runtime.LayoutEditor.AnimationWindowSize.Height);
+                            Runtime.LayoutEditor.AnimationWindowBoundsInitialized = true;
+                        }
+                        break;
+                    case "LayoutAnimationWindowHeight":
+                        if (SafeTryParseInt(node.InnerText, out int animWinH))
+                        {
+                            Runtime.LayoutEditor.AnimationWindowSize = new Size(Runtime.LayoutEditor.AnimationWindowSize.Width, Math.Max(animWinH, 240));
+                            Runtime.LayoutEditor.AnimationWindowBoundsInitialized = true;
+                        }
+                        break;
                     case "DumpShadersDEBUG":
                         bool.TryParse(node.InnerText, out Runtime.DumpShadersDEBUG);
                         break;
@@ -499,6 +530,11 @@ namespace Toolbox.Library
             layoutSettingsNode.AppendChild(createNode(doc, "TransformPaneChidlren", Runtime.LayoutEditor.TransformChidlren.ToString()));
             layoutSettingsNode.AppendChild(createNode(doc, "LayoutForceMaxWidthTimeline", Runtime.LayoutEditor.ForceMaxWidthTimeline.ToString()));
             layoutSettingsNode.AppendChild(createNode(doc, "LayoutMulticlickBehavior", Runtime.LayoutEditor.MulticlickBehavior.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutTransformDataToAnimationData", Runtime.LayoutEditor.TransformDataToAnimationData.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutAnimationWindowX", Runtime.LayoutEditor.AnimationWindowLocation.X.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutAnimationWindowY", Runtime.LayoutEditor.AnimationWindowLocation.Y.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutAnimationWindowWidth", Runtime.LayoutEditor.AnimationWindowSize.Width.ToString()));
+            layoutSettingsNode.AppendChild(createNode(doc, "LayoutAnimationWindowHeight", Runtime.LayoutEditor.AnimationWindowSize.Height.ToString()));
         }
 
         private static void AppendDeveloperSettings(XmlDocument doc, XmlNode parentNode)

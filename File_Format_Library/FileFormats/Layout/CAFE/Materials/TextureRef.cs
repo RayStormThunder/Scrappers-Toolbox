@@ -49,8 +49,10 @@ namespace LayoutBXLYT.Cafe
             WrapModeU = (WrapMode)(flag1 & 0x3);
             WrapModeV = (WrapMode)(flag2 & 0x3);
 
-            if (header.Textures.Count > 0 && ID != -1)
+            if (ID >= 0 && ID < header.Textures.Count)
                 Name = header.Textures[ID];
+            else
+                Name = string.Empty;
         }
 
         public void Write(FileWriter writer)

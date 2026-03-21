@@ -215,6 +215,7 @@ namespace LayoutBXLYT
                     item.SubItems.Add(texture.Width.ToString());
                     item.SubItems.Add(texture.Height.ToString());
                     item.SubItems.Add(texture.DataSize);
+                    item.SubItems.Add(index.ToString());
 
                     // Running on the UI thread
                     imgListBig.Images.Add(temp);
@@ -371,7 +372,7 @@ namespace LayoutBXLYT
             if (names == null || names.Count == 0)
                 return;
 
-            var result = MessageBox.Show("Are you sure you want to remove these textures?",
+            var result = MessageBox.Show("Are you sure you want to remove these texture references from this layout?",
                 "Layout Edtior", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (result != DialogResult.Yes)
@@ -382,23 +383,6 @@ namespace LayoutBXLYT
 
             foreach (var texture in names)
             {
-                string textureKey;
-                STGenericTexture textureValue;
-
-                if (TryResolveTexture(texture, out textureKey, out textureValue))
-                {
-                    ActiveLayout.TextureManager.RemoveTexture(textureValue);
-                    foreach (var bntx in PluginRuntime.bntxContainers)
-                    {
-                        if (bntx.Textures.ContainsKey(textureKey))
-                            bntx.Textures.Remove(textureKey);
-                    }
-                    if (PluginRuntime.bflimTextures.ContainsKey(textureKey))
-                        PluginRuntime.bflimTextures.Remove(textureKey);
-
-                    TextureList.Remove(textureKey);
-                }
-
                 ActiveLayout.RemoveTexture(texture);
             }
 

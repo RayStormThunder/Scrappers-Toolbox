@@ -74,6 +74,9 @@ namespace LayoutBXLYT
             alighmentHCB.Bind(typeof(OriginX), pane, "HorizontalAlignment");
             alighmentVCB.Bind(typeof(OriginY), pane, "VerticalAlignment");
             alighmentLineCB.Bind(typeof(LineAlign), pane, "LineAlignment");
+            alighmentHCB.SelectedItem = pane.HorizontalAlignment;
+            alighmentVCB.SelectedItem = pane.VerticalAlignment;
+            alighmentLineCB.SelectedItem = pane.LineAlignment;
             chkEnableShadows.Bind(pane, "ShadowEnabled");
             chkSizeRestrict.Bind(pane, "RestrictedTextLengthEnabled");
 
@@ -226,7 +229,7 @@ namespace LayoutBXLYT
 
         private void fontFileCB_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (!loaded && fontFileCB.SelectedIndex >= 0) return;
+            if (!loaded || fontFileCB.SelectedIndex < 0) return;
 
             activePane.FontName = (string)fontFileCB.SelectedItem;
             activePane.FontIndex = (ushort)fontFileCB.SelectedIndex;

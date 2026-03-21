@@ -84,6 +84,7 @@
 			this.editorModeCB = new Toolbox.Library.Forms.STComboBox();
 			this.multiclickBehaviorLabel = new Toolbox.Library.Forms.STLabel();
 			this.multiclickBehaviorCB = new Toolbox.Library.Forms.STComboBox();
+			this.transformDataToAnimationDataChk = new Toolbox.Library.Forms.STCheckBox();
 			this.chkAutoKey = new Toolbox.Library.Forms.STCheckBox();
 			this.saveWorkspaceToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
 			((System.ComponentModel.ISupportInitialize)(this.backColorDisplay)).BeginInit();
@@ -601,12 +602,27 @@
 			this.multiclickBehaviorCB.TabIndex = 22;
 			this.multiclickBehaviorCB.SelectedIndexChanged += new System.EventHandler(this.multiclickBehaviorCB_SelectedIndexChanged);
 			// 
+			// transformDataToAnimationDataChk
+			// 
+			this.transformDataToAnimationDataChk.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)));
+			this.transformDataToAnimationDataChk.AutoSize = true;
+			this.transformDataToAnimationDataChk.ForeColor = System.Drawing.Color.White;
+			this.transformDataToAnimationDataChk.Location = new System.Drawing.Point(1075, 27);
+			this.transformDataToAnimationDataChk.Name = "transformDataToAnimationDataChk";
+			this.transformDataToAnimationDataChk.Size = new System.Drawing.Size(182, 17);
+			this.transformDataToAnimationDataChk.TabIndex = 24;
+			this.transformDataToAnimationDataChk.Text = "Transform Data to Animation Data";
+			this.transformDataToAnimationDataChk.UseVisualStyleBackColor = true;
+			this.transformDataToAnimationDataChk.CheckedChanged += new System.EventHandler(this.transformDataToAnimationDataChk_CheckedChanged);
+			// 
 			// chkAutoKey
 			// 
+			this.chkAutoKey.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)));
 			this.chkAutoKey.AutoSize = true;
 			this.chkAutoKey.Checked = true;
 			this.chkAutoKey.CheckState = System.Windows.Forms.CheckState.Checked;
-			this.chkAutoKey.Location = new System.Drawing.Point(1072, 27);
+			this.chkAutoKey.ForeColor = System.Drawing.Color.White;
+			this.chkAutoKey.Location = new System.Drawing.Point(1263, 27);
 			this.chkAutoKey.Name = "chkAutoKey";
 			this.chkAutoKey.Size = new System.Drawing.Size(69, 17);
 			this.chkAutoKey.TabIndex = 19;
@@ -626,6 +642,7 @@
 			this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
 			this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
 			this.ClientSize = new System.Drawing.Size(1145, 553);
+			this.Controls.Add(this.transformDataToAnimationDataChk);
 			this.Controls.Add(this.chkAutoKey);
 			this.Controls.Add(this.multiclickBehaviorCB);
 			this.Controls.Add(this.multiclickBehaviorLabel);
@@ -706,6 +723,7 @@
 		private Toolbox.Library.Forms.STComboBox editorModeCB;
 		private Toolbox.Library.Forms.STLabel multiclickBehaviorLabel;
 		private Toolbox.Library.Forms.STComboBox multiclickBehaviorCB;
+		private Toolbox.Library.Forms.STCheckBox transformDataToAnimationDataChk;
 		private Toolbox.Library.Forms.STCheckBox chkAutoKey;
 		private Toolbox.Library.Forms.STLabel visibilityModeLabel;
 		private Toolbox.Library.Forms.STComboBox visibilityModeCB;

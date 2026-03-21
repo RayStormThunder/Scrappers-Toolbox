@@ -173,10 +173,14 @@ namespace LayoutBXLYT
 
             public override void RemoveTexture(string name)
             {
-                if (TextureList.Textures.Contains(name))
-                    TextureList.Textures.Remove(name);
+                int removeIndex = TextureList.Textures.IndexOf(name);
+                if (removeIndex >= 0)
+                    TextureList.Textures.RemoveAt(removeIndex);
 
                 RemoveTextureReferences(name);
+
+                if (removeIndex >= 0)
+                    ReindexTextureReferencesAfterRemove(removeIndex, name);
             }
 
             public int TotalPaneCount()
@@ -543,6 +547,7 @@ namespace LayoutBXLYT
             public void Write(FileWriter writer)
             {
                 RecalculateMaterialReferences();
+                SyncMaterialTextureIdsByName(true);
 
                 writer.SetByteOrder(IsBigEndian);
                 writer.WriteSignature(Magic);

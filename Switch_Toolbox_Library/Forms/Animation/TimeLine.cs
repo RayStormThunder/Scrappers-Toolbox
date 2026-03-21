@@ -319,6 +319,25 @@ namespace Toolbox.Library.Forms
             lastMousePos = e.Location;
         }
 
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+
+            lastMousePos = e.Location;
+            if (lastFrame == startTime)
+                return;
+
+            if (e.Button == MouseButtons.Left)
+            {
+                Locked = true;
+                currentFrame = Math.Min(Math.Max(startTime,
+                    (int)Math.Round(((e.X - 20 - margin) * (frameRight - frameLeft) / (Width - 40 - margin) + frameLeft))),
+                    lastFrame);
+                FrameChanged?.Invoke(this, new EventArgs());
+                Refresh();
+            }
+        }
+
         protected override void OnMouseUp(MouseEventArgs e)
         {
             timer.Stop();

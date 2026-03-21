@@ -37,23 +37,29 @@ namespace LayoutBXLYT
         {
             if (ParentLayout != null && typeCB.SelectedItem is AnimationTarget)
             {
+                var selectedTarget = (AnimationTarget)typeCB.SelectedItem;
                 objectTargetsCB.Items.Clear();
-                if ((AnimationTarget)typeCB.SelectedItem == AnimationTarget.Pane)
+                if (selectedTarget == AnimationTarget.Pane)
                 {
                     foreach (var pane in ParentLayout.PaneLookup.Keys)
-                        if (!AnimInfo.ContainsEntry(pane))
+                        if (!HasEntryForTarget(pane, AnimationTarget.Pane))
                             objectTargetsCB.Items.Add(pane);
                 }
-                else if ((AnimationTarget)typeCB.SelectedItem == AnimationTarget.Material)
+                else if (selectedTarget == AnimationTarget.Material)
                 {
                     foreach (var mat in ParentLayout.Materials)
-                        if (!AnimInfo.ContainsEntry(mat.Name))
+                        if (!HasEntryForTarget(mat.Name, AnimationTarget.Material))
                             objectTargetsCB.Items.Add(mat.Name);
                 }
 
                 if (objectTargetsCB.Items.Count > 0)
                     objectTargetsCB.SelectedIndex = 0;
             }
+        }
+
+        private bool HasEntryForTarget(string name, AnimationTarget target)
+        {
+            return AnimInfo.Entries.Any(x => x.Name == name && x.Target == target);
         }
 
         private void objectTargetsCB_SelectedIndexChanged(object sender, EventArgs e)

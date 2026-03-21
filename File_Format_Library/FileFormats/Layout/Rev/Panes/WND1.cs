@@ -130,8 +130,13 @@ namespace LayoutBXLYT.Revolution
         public void CopyWindows()
         {
             Content = (BxlytWindowContent)Content.Clone();
-            for (int f = 0; f < WindowFrames.Count; f++)
-                WindowFrames[f] = (BxlytWindowFrame)WindowFrames[f].Clone();
+            var clonedFrames = new List<BxlytWindowFrame>();
+            if (WindowFrames != null)
+            {
+                foreach (var frame in WindowFrames)
+                    clonedFrames.Add(frame == null ? null : (BxlytWindowFrame)frame.Clone());
+            }
+            WindowFrames = clonedFrames;
         }
 
         [TypeConverter(typeof(ExpandableObjectConverter))]

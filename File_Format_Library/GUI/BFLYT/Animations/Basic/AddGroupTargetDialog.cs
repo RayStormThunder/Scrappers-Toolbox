@@ -38,6 +38,12 @@ namespace LayoutBXLYT
                 return LoadEnum(typeof(LTSTarget));
             else if (group.Type == "VertexColor")
                 return LoadEnum(typeof(LVCTarget));
+            else if (group.Type == "MaterialColor")
+            {
+                if (!string.IsNullOrEmpty(group.Tag) && group.Tag.StartsWith("R"))
+                    return LoadEnum(typeof(RevLMCTarget));
+                return LoadEnum(typeof(LMCTarget));
+            }
             else if (group.Type == "TexturePattern")
                 return LoadEnum(typeof(LTPTarget));
             else if (group.Type == "IndTextureSRT")

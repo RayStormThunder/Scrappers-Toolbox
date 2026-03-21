@@ -35,7 +35,32 @@ namespace LayoutBXLYT.CTR
 
         public string GetTexture(int index)
         {
-            return ParentLayout.Textures[Material.TextureMaps[index].ID];
+            if (Material?.TextureMaps == null || index < 0 || index >= Material.TextureMaps.Length || Material.TextureMaps[index] == null)
+                return string.Empty;
+
+            var map = Material.TextureMaps[index];
+            if (!string.IsNullOrEmpty(map.Name) && ParentLayout?.Textures != null)
+            {
+                string mapFile = System.IO.Path.GetFileName(map.Name.Replace('\\', '/'));
+                for (int i = 0; i < ParentLayout.Textures.Count; i++)
+                {
+                    string listName = ParentLayout.Textures[i];
+                    if (string.Equals(listName, map.Name, StringComparison.OrdinalIgnoreCase))
+                        return listName;
+                }
+
+                for (int i = 0; i < ParentLayout.Textures.Count; i++)
+                {
+                    string listName = ParentLayout.Textures[i];
+                    if (string.Equals(System.IO.Path.GetFileName((listName ?? string.Empty).Replace('\\', '/')), mapFile, StringComparison.OrdinalIgnoreCase))
+                        return listName;
+                }
+            }
+
+            if (ParentLayout?.Textures != null && map.ID >= 0 && map.ID < ParentLayout.Textures.Count)
+                return ParentLayout.Textures[map.ID];
+
+            return string.Empty;
         }
 
         [TypeConverter(typeof(ExpandableObjectConverter))]

@@ -5,8 +5,11 @@ using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using System.Text;
+using System.Linq;
 using GL_EditorFramework.Interfaces;
 using GL_EditorFramework.EditorDrawables;
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 using Toolbox.Library.Animations;
 using Toolbox.Library.IO;
@@ -875,6 +878,515 @@ namespace Toolbox.Library.Forms
         private void sortToolStripMenuItem_Click(object sender, EventArgs e)
         {
             treeViewCustom1.Sort();
+        }
+
+        private void createTextureMapToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var activeFormat = GetActiveFile();
+            if (!(activeFormat is IArchiveFile archiveFile))
+            {
+                MessageBox.Show("Open an archive first.", "Create Texture Map", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                var rows = new List<BrlytTextureUsageRow>();
+                var textureDisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                // Start from all texture assets in the archive so unused textures are included as all-False rows.
+                foreach (var file in archiveFile.Files)
+                {
+                    if (!IsLikelyTextureFileName(file.FileName))
+                        continue;
+
+                    string key = NormalizeTextureKey(file.FileName);
+                    if (string.IsNullOrEmpty(key))
+                        continue;
+
+                    if (!textureDisplayNames.ContainsKey(key))
+                        textureDisplayNames[key] = CleanupTextureDisplayName(file.FileName);
+                }
+
+                foreach (var file in archiveFile.Files)
+                {
+                    if (!IsLikelyLayoutFileName(file.FileName))
+                        continue;
+
+                    object fileFormat;
+                    try
+                    {
+                        fileFormat = file.OpenFile();
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    var textures = GetLayoutTextureNames(fileFormat);
+                    if (textures == null)
+                        continue;
+
+                    var row = new BrlytTextureUsageRow()
+                    {
+                        BrlytName = CleanupBrlytDisplayName(file.FileName),
+                        TextureKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    };
+
+                    foreach (var texture in textures)
+                    {
+                        string key = NormalizeTextureKey(texture);
+                        if (string.IsNullOrEmpty(key))
+                            continue;
+
+                        if (!textureDisplayNames.ContainsKey(key))
+                            textureDisplayNames[key] = CleanupTextureDisplayName(texture);
+
+                        row.TextureKeys.Add(key);
+                    }
+
+                    rows.Add(row);
+                }
+
+                if (rows.Count == 0)
+                {
+                    MessageBox.Show("No layout files with texture lists were found in the active archive.", "Create Texture Map", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                rows = rows.OrderBy(x => x.BrlytName, StringComparer.OrdinalIgnoreCase).ToList();
+                var textureKeys = textureDisplayNames.Keys
+                    .OrderBy(x => textureDisplayNames[x], StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                string archiveName = System.IO.Path.GetFileNameWithoutExtension(activeFormat.FileName ?? "Archive");
+                string archiveDirectory = string.Empty;
+                if (!string.IsNullOrEmpty(activeFormat.FilePath))
+                    archiveDirectory = System.IO.Path.GetDirectoryName(activeFormat.FilePath);
+
+                SaveFileDialog sfd = new SaveFileDialog();
+                sfd.FileName = $"{archiveName}_TextureMap.ods";
+                sfd.Filter = "OpenDocument Spreadsheet (*.ods)|*.ods|HTML Spreadsheet (*.html)|*.html|CSV Spreadsheet (*.csv)|*.csv";
+                if (Directory.Exists(archiveDirectory))
+                    sfd.InitialDirectory = archiveDirectory;
+
+                if (sfd.ShowDialog() != DialogResult.OK)
+                    return;
+
+                string ext = System.IO.Path.GetExtension(sfd.FileName).ToLowerInvariant();
+                if (ext == ".ods")
+                    WriteTextureMapOds(sfd.FileName, archiveName, rows, textureKeys, textureDisplayNames);
+                else if (ext == ".csv")
+                    File.WriteAllText(sfd.FileName, BuildTextureMapCsv(rows, textureKeys, textureDisplayNames), Encoding.UTF8);
+                else
+                    File.WriteAllText(sfd.FileName, BuildTextureMapHtml(archiveName, rows, textureKeys, textureDisplayNames), Encoding.UTF8);
+
+                MessageBox.Show($"Texture map created:\n{sfd.FileName}", "Create Texture Map", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                STErrorDialog.Show("Failed to create texture map.", "Create Texture Map", ex.ToString());
+            }
+        }
+
+        private static IEnumerable<string> GetLayoutTextureNames(object fileFormat)
+        {
+            if (fileFormat == null)
+                return null;
+
+            var header = GetMemberValueIgnoreCase(fileFormat, "header");
+            if (header == null)
+                return null;
+
+            var texturesObj = GetMemberValueIgnoreCase(header, "Textures");
+            if (texturesObj is IEnumerable<string> typed)
+                return typed;
+
+            if (texturesObj is System.Collections.IEnumerable enumerable)
+            {
+                var list = new List<string>();
+                foreach (var item in enumerable)
+                {
+                    if (item != null)
+                        list.Add(item.ToString());
+                }
+                return list;
+            }
+
+            return null;
+        }
+
+        private static object GetMemberValueIgnoreCase(object source, string memberName)
+        {
+            if (source == null || string.IsNullOrEmpty(memberName))
+                return null;
+
+            var flags = System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.Public |
+                        System.Reflection.BindingFlags.NonPublic |
+                        System.Reflection.BindingFlags.IgnoreCase;
+
+            var property = source.GetType().GetProperty(memberName, flags);
+            if (property != null)
+                return property.GetValue(source);
+
+            var field = source.GetType().GetField(memberName, flags);
+            if (field != null)
+                return field.GetValue(source);
+
+            return null;
+        }
+
+        private static bool IsLikelyLayoutFileName(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName))
+                return false;
+
+            string normalized = fileName.Replace('\\', '/');
+            string ext = Utils.GetExtension(normalized);
+
+            if (string.Equals(ext, ".brlyt", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".blyt", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".bflyt", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".bclyt", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (normalized.IndexOf("/blyt/", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("/brlyt/", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            return false;
+        }
+
+        private static bool IsLikelyTextureFileName(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName))
+                return false;
+
+            string normalized = fileName.Replace('\\', '/');
+            string ext = Utils.GetExtension(normalized);
+
+            if (string.Equals(ext, ".tpl", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".bflim", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".bclim", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".bti", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".tex", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".dds", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".png", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".tga", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(ext, ".bmp", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (normalized.IndexOf("/timg/", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("/texture/", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("/textures/", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            return false;
+        }
+
+        private static string CleanupBrlytDisplayName(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName))
+                return string.Empty;
+
+            string normalized = fileName.Replace('\\', '/');
+            if (normalized.StartsWith("brlyt/", StringComparison.OrdinalIgnoreCase))
+                normalized = normalized.Substring("brlyt/".Length);
+            else if (normalized.StartsWith("blyt/", StringComparison.OrdinalIgnoreCase))
+                normalized = normalized.Substring("blyt/".Length);
+
+            return System.IO.Path.GetFileNameWithoutExtension(normalized);
+        }
+
+        private static string CleanupTextureDisplayName(string texture)
+        {
+            if (string.IsNullOrEmpty(texture))
+                return string.Empty;
+
+            string normalized = texture.Replace('\\', '/');
+            return System.IO.Path.GetFileNameWithoutExtension(normalized);
+        }
+
+        private static string NormalizeTextureKey(string texture)
+        {
+            if (string.IsNullOrWhiteSpace(texture))
+                return string.Empty;
+
+            return CleanupTextureDisplayName(texture).Trim().ToLowerInvariant();
+        }
+
+        private static string BuildTextureMapHtml(string archiveName, List<BrlytTextureUsageRow> rows,
+            List<string> textureKeys, Dictionary<string, string> textureDisplayNames)
+        {
+            var emptyBrlytColumns = new HashSet<string>(
+                rows.Where(x => x.TotalTextureCount == 0).Select(x => x.BrlytName),
+                StringComparer.OrdinalIgnoreCase);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<!DOCTYPE html>");
+            sb.AppendLine("<html><head><meta charset='utf-8' />");
+            sb.AppendLine("<title>Texture Map</title>");
+            sb.AppendLine("<style>");
+            sb.AppendLine("body{font-family:Segoe UI,Arial,sans-serif;background:#1a1a1a;color:#f0f0f0;margin:16px;}");
+            sb.AppendLine("table{border-collapse:collapse;font-size:12px;}");
+            sb.AppendLine("th,td{border:1px solid #555;padding:4px 8px;text-align:center;}");
+            sb.AppendLine("th{background:#2c2c2c;position:sticky;top:0;}");
+            sb.AppendLine("td.name{text-align:left;background:#242424;}");
+            sb.AppendLine("td.true{background:#1f7a1f;color:#ffffff;font-weight:600;}");
+            sb.AppendLine("td.false{background:#8a2020;color:#ffffff;font-weight:600;}");
+            sb.AppendLine("td.warn,th.warn{background:#f2c94c;color:#111111;font-weight:700;}");
+            sb.AppendLine("tr.total td{background:#333333;font-weight:700;}");
+            sb.AppendLine("</style></head><body>");
+            sb.AppendLine($"<h2>Texture Map - {EscapeHtml(archiveName)}</h2>");
+            sb.AppendLine($"<p>Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}</p>");
+            sb.AppendLine("<table>");
+            sb.AppendLine("<tr><th>Texture</th>");
+
+            foreach (var row in rows)
+                sb.AppendLine($"<th class='{(emptyBrlytColumns.Contains(row.BrlytName) ? "warn" : string.Empty)}'>{EscapeHtml(row.BrlytName)}</th>");
+
+            sb.AppendLine("<th>BRLYT Count</th></tr>");
+
+            foreach (var textureKey in textureKeys)
+            {
+                string textureName = textureDisplayNames[textureKey];
+                int brlytCount = 0;
+                foreach (var row in rows)
+                {
+                    if (row.TextureKeys.Contains(textureKey))
+                        brlytCount++;
+                }
+
+                bool isEmptyTextureRow = brlytCount == 0;
+                sb.AppendLine($"<tr><td class='name{(isEmptyTextureRow ? " warn" : string.Empty)}'>{EscapeHtml(textureName)}</td>");
+
+                foreach (var row in rows)
+                {
+                    bool hasTexture = row.TextureKeys.Contains(textureKey);
+                    string cellClass = isEmptyTextureRow || emptyBrlytColumns.Contains(row.BrlytName)
+                        ? "warn"
+                        : (hasTexture ? "true" : "false");
+                    sb.AppendLine($"<td class='{cellClass}'>{(hasTexture ? "True" : "False")}</td>");
+                }
+
+                sb.AppendLine($"<td class='{(isEmptyTextureRow ? "warn" : string.Empty)}'>{brlytCount}</td></tr>");
+            }
+
+            sb.AppendLine("<tr class='total'><td class='name'>Textures In BRLYT</td>");
+            foreach (var row in rows)
+                sb.AppendLine($"<td class='{(emptyBrlytColumns.Contains(row.BrlytName) ? "warn" : string.Empty)}'>{row.TotalTextureCount}</td>");
+            sb.AppendLine("<td>-</td></tr>");
+
+            sb.AppendLine("</table></body></html>");
+            return sb.ToString();
+        }
+
+        private static string BuildTextureMapCsv(List<BrlytTextureUsageRow> rows,
+            List<string> textureKeys, Dictionary<string, string> textureDisplayNames)
+        {
+            var sb = new StringBuilder();
+
+            var header = new List<string>() { "Texture" };
+            header.AddRange(rows.Select(x => EscapeCsv(x.BrlytName)));
+            header.Add("BRLYT Count");
+            sb.AppendLine(string.Join(",", header));
+
+            foreach (var textureKey in textureKeys)
+            {
+                int brlytCount = 0;
+                var cols = new List<string>() { EscapeCsv(textureDisplayNames[textureKey]) };
+                foreach (var row in rows)
+                {
+                    bool hasTexture = row.TextureKeys.Contains(textureKey);
+                    if (hasTexture)
+                        brlytCount++;
+                    cols.Add(hasTexture ? "True" : "False");
+                }
+                cols.Add(brlytCount.ToString());
+                sb.AppendLine(string.Join(",", cols));
+            }
+
+            var totalRow = new List<string>() { "Textures In BRLYT" };
+            totalRow.AddRange(rows.Select(x => x.TotalTextureCount.ToString()));
+            totalRow.Add("-");
+            sb.AppendLine(string.Join(",", totalRow));
+
+            return sb.ToString();
+        }
+
+        private static void WriteTextureMapOds(string filePath, string archiveName,
+            List<BrlytTextureUsageRow> rows, List<string> textureKeys, Dictionary<string, string> textureDisplayNames)
+        {
+            using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
+            {
+                var mimetype = zip.CreateEntry("mimetype", CompressionLevel.NoCompression);
+                using (var writer = new StreamWriter(mimetype.Open(), new UTF8Encoding(false)))
+                    writer.Write("application/vnd.oasis.opendocument.spreadsheet");
+
+                WriteZipTextEntry(zip, "content.xml", BuildTextureMapOdsContent(archiveName, rows, textureKeys, textureDisplayNames));
+                WriteZipTextEntry(zip, "styles.xml", BuildMinimalOdsStyles());
+                WriteZipTextEntry(zip, "meta.xml", BuildMinimalOdsMeta());
+                WriteZipTextEntry(zip, "settings.xml", BuildMinimalOdsSettings());
+                WriteZipTextEntry(zip, "META-INF/manifest.xml", BuildMinimalOdsManifest());
+            }
+        }
+
+        private static void WriteZipTextEntry(ZipArchive archive, string name, string content)
+        {
+            var entry = archive.CreateEntry(name, CompressionLevel.Optimal);
+            using (var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false)))
+                writer.Write(content);
+        }
+
+        private static string BuildTextureMapOdsContent(string archiveName,
+            List<BrlytTextureUsageRow> rows, List<string> textureKeys, Dictionary<string, string> textureDisplayNames)
+        {
+            var emptyBrlytColumns = new HashSet<string>(
+                rows.Where(x => x.TotalTextureCount == 0).Select(x => x.BrlytName),
+                StringComparer.OrdinalIgnoreCase);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+            sb.AppendLine("<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\" office:version=\"1.2\">");
+            sb.AppendLine("  <office:automatic-styles>");
+            sb.AppendLine("    <style:style style:name=\"th\" style:family=\"table-cell\"><style:table-cell-properties fo:background-color=\"#D9D9D9\"/><style:text-properties fo:font-weight=\"bold\"/></style:style>");
+            sb.AppendLine("    <style:style style:name=\"ttrue\" style:family=\"table-cell\"><style:table-cell-properties fo:background-color=\"#2E7D32\"/><style:text-properties fo:color=\"#FFFFFF\"/></style:style>");
+            sb.AppendLine("    <style:style style:name=\"tfalse\" style:family=\"table-cell\"><style:table-cell-properties fo:background-color=\"#C62828\"/><style:text-properties fo:color=\"#FFFFFF\"/></style:style>");
+            sb.AppendLine("    <style:style style:name=\"twarn\" style:family=\"table-cell\"><style:table-cell-properties fo:background-color=\"#F2C94C\"/><style:text-properties fo:color=\"#111111\" fo:font-weight=\"bold\"/></style:style>");
+            sb.AppendLine("    <style:style style:name=\"ttotal\" style:family=\"table-cell\"><style:table-cell-properties fo:background-color=\"#EFEFEF\"/><style:text-properties fo:font-weight=\"bold\"/></style:style>");
+            sb.AppendLine("  </office:automatic-styles>");
+            sb.AppendLine("  <office:body><office:spreadsheet>");
+            sb.AppendLine($"    <table:table table:name=\"{EscapeXml(archiveName)}\">");
+
+            sb.AppendLine("      <table:table-row>");
+            AppendOdsStringCell(sb, "Texture", "th");
+            foreach (var row in rows)
+                AppendOdsStringCell(sb, row.BrlytName, emptyBrlytColumns.Contains(row.BrlytName) ? "twarn" : "th");
+            AppendOdsStringCell(sb, "BRLYT Count", "th");
+            sb.AppendLine("      </table:table-row>");
+
+            foreach (var textureKey in textureKeys)
+            {
+                sb.AppendLine("      <table:table-row>");
+                int brlytCount = 0;
+                foreach (var row in rows)
+                {
+                    bool hasTexture = row.TextureKeys.Contains(textureKey);
+                    if (hasTexture)
+                        brlytCount++;
+                }
+
+                bool isEmptyTextureRow = brlytCount == 0;
+                AppendOdsStringCell(sb, textureDisplayNames[textureKey], isEmptyTextureRow ? "twarn" : null);
+
+                foreach (var row in rows)
+                {
+                    bool hasTexture = row.TextureKeys.Contains(textureKey);
+                    string styleName = isEmptyTextureRow || emptyBrlytColumns.Contains(row.BrlytName)
+                        ? "twarn"
+                        : (hasTexture ? "ttrue" : "tfalse");
+                    AppendOdsStringCell(sb, hasTexture ? "True" : "False", styleName);
+                }
+
+                AppendOdsStringCell(sb, brlytCount.ToString(), isEmptyTextureRow ? "twarn" : null);
+                sb.AppendLine("      </table:table-row>");
+            }
+
+            sb.AppendLine("      <table:table-row>");
+            AppendOdsStringCell(sb, "Textures In BRLYT", "ttotal");
+            foreach (var row in rows)
+                AppendOdsStringCell(sb, row.TotalTextureCount.ToString(), emptyBrlytColumns.Contains(row.BrlytName) ? "twarn" : "ttotal");
+            AppendOdsStringCell(sb, "-", "ttotal");
+            sb.AppendLine("      </table:table-row>");
+
+            sb.AppendLine("    </table:table>");
+            sb.AppendLine("  </office:spreadsheet></office:body>");
+            sb.AppendLine("</office:document-content>");
+            return sb.ToString();
+        }
+
+        private static void AppendOdsStringCell(StringBuilder sb, string value, string styleName)
+        {
+            string style = string.IsNullOrEmpty(styleName) ? string.Empty : $" table:style-name=\"{styleName}\"";
+            sb.AppendLine($"        <table:table-cell{style} office:value-type=\"string\"><text:p>{EscapeXml(value)}</text:p></table:table-cell>");
+        }
+
+        private static string BuildMinimalOdsStyles()
+        {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                   "<office:document-styles xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" office:version=\"1.2\">" +
+                   "<office:styles/><office:automatic-styles/><office:master-styles/></office:document-styles>";
+        }
+
+        private static string BuildMinimalOdsMeta()
+        {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                   "<office:document-meta xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:meta=\"urn:oasis:names:tc:opendocument:xmlns:meta:1.0\" office:version=\"1.2\">" +
+                   "<office:meta><meta:generator>Scrapper's Toolbox</meta:generator></office:meta></office:document-meta>";
+        }
+
+        private static string BuildMinimalOdsSettings()
+        {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                   "<office:document-settings xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" office:version=\"1.2\"><office:settings/></office:document-settings>";
+        }
+
+        private static string BuildMinimalOdsManifest()
+        {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                   "<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">" +
+                   "<manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"application/vnd.oasis.opendocument.spreadsheet\"/>" +
+                   "<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>" +
+                   "<manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>" +
+                   "<manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>" +
+                   "<manifest:file-entry manifest:full-path=\"settings.xml\" manifest:media-type=\"text/xml\"/>" +
+                   "</manifest:manifest>";
+        }
+
+        private static string EscapeCsv(string value)
+        {
+            if (value == null)
+                return string.Empty;
+
+            string escaped = value.Replace("\"", "\"\"");
+            return $"\"{escaped}\"";
+        }
+
+        private static string EscapeHtml(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            return value
+                .Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;")
+                .Replace("\"", "&quot;")
+                .Replace("'", "&#39;");
+        }
+
+        private static string EscapeXml(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            return value
+                .Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;")
+                .Replace("\"", "&quot;")
+                .Replace("'", "&apos;");
+        }
+
+        private class BrlytTextureUsageRow
+        {
+            public string BrlytName { get; set; }
+            public HashSet<string> TextureKeys { get; set; }
+            public int TotalTextureCount => TextureKeys?.Count ?? 0;
         }
 
         public void SortTreeAscending()

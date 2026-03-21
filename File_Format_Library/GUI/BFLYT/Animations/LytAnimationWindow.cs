@@ -32,6 +32,47 @@ namespace LayoutBXLYT
             CurveEditor = new CurveEditor();
             CurveEditor.Dock = DockStyle.Fill;
             tabPage2.Controls.Add(CurveEditor);
+
+            if (Runtime.LayoutEditor.AnimationWindowBoundsInitialized)
+            {
+                StartPosition = FormStartPosition.Manual;
+                Location = Runtime.LayoutEditor.AnimationWindowLocation;
+                Size = Runtime.LayoutEditor.AnimationWindowSize;
+            }
+
+            Move += LytAnimationWindow_Move;
+            ResizeEnd += LytAnimationWindow_ResizeEnd;
+            FormClosed += LytAnimationWindow_FormClosed;
+        }
+
+        private void LytAnimationWindow_Move(object sender, EventArgs e)
+        {
+            PersistBounds(false);
+        }
+
+        private void LytAnimationWindow_ResizeEnd(object sender, EventArgs e)
+        {
+            PersistBounds(false);
+        }
+
+        private void LytAnimationWindow_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            PersistBounds(true);
+        }
+
+        private void PersistBounds(bool force)
+        {
+            Rectangle bounds = Bounds;
+            if (WindowState != FormWindowState.Normal)
+                bounds = RestoreBounds;
+
+            if (!force && WindowState != FormWindowState.Normal)
+                return;
+
+            Runtime.LayoutEditor.AnimationWindowLocation = bounds.Location;
+            Runtime.LayoutEditor.AnimationWindowSize = bounds.Size;
+            Runtime.LayoutEditor.AnimationWindowBoundsInitialized = true;
+            Config.Save();
         }
 
         public List<BxlanHeader> GetAnimations() {

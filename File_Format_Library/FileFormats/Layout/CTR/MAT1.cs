@@ -75,10 +75,32 @@ namespace LayoutBXLYT.CTR
 
         public string GetTexture(int index)
         {
-            if (TextureMaps[index].ID != -1)
-                return ParentLayout.Textures[TextureMaps[index].ID];
-            else
+            if (TextureMaps == null || index < 0 || index >= TextureMaps.Length || TextureMaps[index] == null)
                 return "";
+
+            var map = TextureMaps[index];
+            if (!string.IsNullOrEmpty(map.Name) && ParentLayout?.Textures != null)
+            {
+                string mapFile = System.IO.Path.GetFileName(map.Name.Replace('\\', '/'));
+                for (int i = 0; i < ParentLayout.Textures.Count; i++)
+                {
+                    string listName = ParentLayout.Textures[i];
+                    if (string.Equals(listName, map.Name, StringComparison.OrdinalIgnoreCase))
+                        return listName;
+                }
+
+                for (int i = 0; i < ParentLayout.Textures.Count; i++)
+                {
+                    string listName = ParentLayout.Textures[i];
+                    if (string.Equals(System.IO.Path.GetFileName((listName ?? string.Empty).Replace('\\', '/')), mapFile, StringComparison.OrdinalIgnoreCase))
+                        return listName;
+                }
+            }
+
+            if (ParentLayout?.Textures != null && map.ID >= 0 && map.ID < ParentLayout.Textures.Count)
+                return ParentLayout.Textures[map.ID];
+
+            return "";
         }
 
         public override bool RemoveTexCoordSources(int index)

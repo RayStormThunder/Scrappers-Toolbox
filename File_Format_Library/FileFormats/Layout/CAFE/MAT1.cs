@@ -108,10 +108,34 @@ namespace LayoutBXLYT.Cafe
 
         public string GetTexture(int index)
         {
-            if (TextureMaps[index].ID != -1)
-                return ((Header)ParentLayout).TextureList.Textures[TextureMaps[index].ID];
-            else
+            if (TextureMaps == null || index < 0 || index >= TextureMaps.Length || TextureMaps[index] == null)
                 return "";
+
+            var map = TextureMaps[index];
+            var textures = ((Header)ParentLayout)?.TextureList?.Textures;
+
+            if (!string.IsNullOrEmpty(map.Name) && textures != null)
+            {
+                string mapFile = System.IO.Path.GetFileName(map.Name.Replace('\\', '/'));
+                for (int i = 0; i < textures.Count; i++)
+                {
+                    string listName = textures[i];
+                    if (string.Equals(listName, map.Name, StringComparison.OrdinalIgnoreCase))
+                        return listName;
+                }
+
+                for (int i = 0; i < textures.Count; i++)
+                {
+                    string listName = textures[i];
+                    if (string.Equals(System.IO.Path.GetFileName((listName ?? string.Empty).Replace('\\', '/')), mapFile, StringComparison.OrdinalIgnoreCase))
+                        return listName;
+                }
+            }
+
+            if (textures != null && map.ID >= 0 && map.ID < textures.Count)
+                return textures[map.ID];
+
+            return "";
         }
 
         public override bool RemoveTexCoordSources(int index)

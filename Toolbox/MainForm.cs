@@ -14,6 +14,7 @@ using Toolbox.Library.Forms;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Reflection;
+using System.Net;
 using OpenTK.Graphics.OpenGL;
 using Toolbox.Library.NodeWrappers;
 using Toolbox.Library.Rendering;
@@ -21,6 +22,7 @@ using Bfres.Structs;
 using Syroot.NintenTools.NSW.Bntx;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
 using FirstPlugin;
+using LayoutBXLYT;
 
 namespace Toolbox
 {
@@ -872,6 +874,8 @@ namespace Toolbox
             if (format == null)
                 return;
 
+            createTextureMapToolStripMenuItem.Enabled = format is IArchiveFile;
+
             if (format.CanSave)
             {
                 saveAsToolStripMenuItem.Enabled = true;
@@ -915,6 +919,7 @@ namespace Toolbox
             saveAsToolStripMenuItem.Enabled = false;
             saveToolStripMenuItem.Enabled = false;
             saveToolStripButton.Enabled = false;
+            createTextureMapToolStripMenuItem.Enabled = false;
         }
 
 
@@ -1825,6 +1830,209 @@ namespace Toolbox
                 Directory.CreateDirectory(userDir);
 
             Process.Start("explorer.exe", userDir);
+        }
+
+        private void createTextureMapToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var activeFormat = GetActiveIFileFormat();
+            if (!(activeFormat is IArchiveFile archiveFile))
+            {
+                MessageBox.Show("Open an ARC/archive in the Object Editor first.", "Create Texture Map", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                var rows = new List<BrlytTextureUsageRow>();
+                var textureDisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var file in archiveFile.Files)
+                {
+                    if (!string.Equals(Utils.GetExtension(file.FileName), ".brlyt", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var opened = file.OpenFile();
+                    if (!(opened is BRLYT brlyt) || brlyt.header?.Textures == null)
+                        continue;
+
+                    var row = new BrlytTextureUsageRow()
+                    {
+                        BrlytName = file.FileName,
+                        TextureCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    };
+
+                    foreach (var texture in brlyt.header.Textures)
+                    {
+                        if (string.IsNullOrWhiteSpace(texture))
+                            continue;
+
+                        string normalized = NormalizeTextureName(texture);
+                        if (string.IsNullOrEmpty(normalized))
+                            continue;
+
+                        if (!textureDisplayNames.ContainsKey(normalized))
+                            textureDisplayNames[normalized] = Path.GetFileName(texture.Replace('\\', '/'));
+
+                        if (!row.TextureCounts.ContainsKey(normalized))
+                            row.TextureCounts[normalized] = 0;
+
+                        row.TextureCounts[normalized]++;
+                    }
+
+                    rows.Add(row);
+                }
+
+                if (rows.Count == 0)
+                {
+                    MessageBox.Show("No BRLYT files were found in the active archive.", "Create Texture Map", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                rows = rows.OrderBy(x => x.BrlytName, StringComparer.OrdinalIgnoreCase).ToList();
+                var normalizedTextures = textureDisplayNames.Keys
+                    .OrderBy(x => textureDisplayNames[x], StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                string archiveName = Path.GetFileNameWithoutExtension(activeFormat?.FileName ?? "Archive");
+                SaveFileDialog sfd = new SaveFileDialog();
+                sfd.FileName = $"{archiveName}_TextureMap.html";
+                sfd.Filter = "HTML Spreadsheet (*.html)|*.html|CSV Spreadsheet (*.csv)|*.csv";
+
+                if (sfd.ShowDialog() != DialogResult.OK)
+                    return;
+
+                string ext = Path.GetExtension(sfd.FileName).ToLowerInvariant();
+                if (ext == ".csv")
+                {
+                    File.WriteAllText(sfd.FileName, BuildTextureMapCsv(rows, normalizedTextures, textureDisplayNames), Encoding.UTF8);
+                }
+                else
+                {
+                    File.WriteAllText(sfd.FileName, BuildTextureMapHtml(archiveName, rows, normalizedTextures, textureDisplayNames), Encoding.UTF8);
+                }
+
+                MessageBox.Show($"Texture map created:\n{sfd.FileName}", "Create Texture Map", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                STErrorDialog.Show("Failed to create texture map.", "Create Texture Map", ex.ToString());
+            }
+        }
+
+        private static string NormalizeTextureName(string texture)
+        {
+            if (string.IsNullOrWhiteSpace(texture))
+                return string.Empty;
+
+            string cleaned = texture.Replace('\\', '/').Trim();
+            string fileName = Path.GetFileName(cleaned);
+            if (!string.IsNullOrWhiteSpace(fileName))
+                cleaned = fileName;
+
+            return cleaned.ToLowerInvariant();
+        }
+
+        private static string BuildTextureMapHtml(string archiveName, List<BrlytTextureUsageRow> rows,
+            List<string> normalizedTextures, Dictionary<string, string> textureDisplayNames)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<!DOCTYPE html>");
+            sb.AppendLine("<html><head><meta charset='utf-8' />");
+            sb.AppendLine("<title>Texture Map</title>");
+            sb.AppendLine("<style>");
+            sb.AppendLine("body{font-family:Segoe UI,Arial,sans-serif;background:#1a1a1a;color:#f0f0f0;margin:16px;}");
+            sb.AppendLine("table{border-collapse:collapse;font-size:12px;}");
+            sb.AppendLine("th,td{border:1px solid #555;padding:4px 8px;text-align:center;}");
+            sb.AppendLine("th{background:#2c2c2c;position:sticky;top:0;}");
+            sb.AppendLine("td.name{text-align:left;background:#242424;}");
+            sb.AppendLine("td.true{background:#1f7a1f;color:#ffffff;font-weight:600;}");
+            sb.AppendLine("td.false{background:#8a2020;color:#ffffff;font-weight:600;}");
+            sb.AppendLine("tr.total td{background:#333333;font-weight:700;}");
+            sb.AppendLine("</style></head><body>");
+            sb.AppendLine($"<h2>Texture Map - {WebUtility.HtmlEncode(archiveName)}</h2>");
+            sb.AppendLine($"<p>Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}</p>");
+            sb.AppendLine("<table>");
+            sb.AppendLine("<tr><th>Texture</th>");
+
+            foreach (var row in rows)
+                sb.AppendLine($"<th>{WebUtility.HtmlEncode(row.BrlytName)}</th>");
+
+            sb.AppendLine("<th>BRLYT Count</th></tr>");
+
+            foreach (var textureKey in normalizedTextures)
+            {
+                string textureName = textureDisplayNames[textureKey];
+                sb.AppendLine($"<tr><td class='name'>{WebUtility.HtmlEncode(textureName)}</td>");
+
+                int brlytCount = 0;
+                foreach (var row in rows)
+                {
+                    bool hasTexture = row.TextureCounts.ContainsKey(textureKey);
+                    if (hasTexture)
+                        brlytCount++;
+
+                    sb.AppendLine($"<td class='{(hasTexture ? "true" : "false")}'>{(hasTexture ? "True" : "False")}</td>");
+                }
+
+                sb.AppendLine($"<td>{brlytCount}</td></tr>");
+            }
+
+            sb.AppendLine("<tr class='total'><td class='name'>Textures In BRLYT</td>");
+            foreach (var row in rows)
+                sb.AppendLine($"<td>{row.TotalTextureCount}</td>");
+            sb.AppendLine("<td>-</td></tr>");
+
+            sb.AppendLine("</table></body></html>");
+            return sb.ToString();
+        }
+
+        private static string BuildTextureMapCsv(List<BrlytTextureUsageRow> rows,
+            List<string> normalizedTextures, Dictionary<string, string> textureDisplayNames)
+        {
+            var sb = new StringBuilder();
+
+            var header = new List<string>() { "Texture" };
+            header.AddRange(rows.Select(x => EscapeCsv(x.BrlytName)));
+            header.Add("BRLYT Count");
+            sb.AppendLine(string.Join(",", header));
+
+            foreach (var textureKey in normalizedTextures)
+            {
+                int brlytCount = 0;
+                var cols = new List<string>() { EscapeCsv(textureDisplayNames[textureKey]) };
+                foreach (var row in rows)
+                {
+                    bool hasTexture = row.TextureCounts.ContainsKey(textureKey);
+                    if (hasTexture)
+                        brlytCount++;
+                    cols.Add(hasTexture ? "True" : "False");
+                }
+                cols.Add(brlytCount.ToString());
+                sb.AppendLine(string.Join(",", cols));
+            }
+
+            var totalRow = new List<string>() { "Textures In BRLYT" };
+            totalRow.AddRange(rows.Select(x => x.TotalTextureCount.ToString()));
+            totalRow.Add("-");
+            sb.AppendLine(string.Join(",", totalRow));
+
+            return sb.ToString();
+        }
+
+        private static string EscapeCsv(string value)
+        {
+            if (value == null)
+                return string.Empty;
+
+            string escaped = value.Replace("\"", "\"\"");
+            return $"\"{escaped}\"";
+        }
+
+        private class BrlytTextureUsageRow
+        {
+            public string BrlytName { get; set; }
+            public Dictionary<string, int> TextureCounts { get; set; }
+            public int TotalTextureCount => TextureCounts?.Values.Sum() ?? 0;
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.IO;
 using Toolbox.Library;
 using Toolbox.Library.Forms;
 using Toolbox.Library.IO;
@@ -43,6 +44,70 @@ namespace LayoutBXLYT
         private bool Loaded = false;
         private int TexCoordinateCount = 1;
 
+        private bool TryGetTextureByName(string textureName, out STGenericTexture texture)
+        {
+            texture = null;
+            if (textureList == null || string.IsNullOrEmpty(textureName))
+                return false;
+
+            if (textureList.TryGetValue(textureName, out texture))
+                return true;
+
+            string normalizedName = Path.GetFileNameWithoutExtension(textureName.Replace('\\', '/'));
+            foreach (var entry in textureList)
+            {
+                if (entry.Value == null)
+                    continue;
+
+                if (string.Equals(entry.Key, textureName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetFileNameWithoutExtension(entry.Key.Replace('\\', '/')), normalizedName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(entry.Value.Text, textureName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetFileNameWithoutExtension((entry.Value.Text ?? string.Empty).Replace('\\', '/')), normalizedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    texture = entry.Value;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private int FindLayoutTextureIndex(string textureName)
+        {
+            if (ActiveMaterial?.ParentLayout?.Textures == null || string.IsNullOrEmpty(textureName))
+                return -1;
+
+            string normalizedName = Path.GetFileNameWithoutExtension(textureName.Replace('\\', '/'));
+            for (int i = 0; i < ActiveMaterial.ParentLayout.Textures.Count; i++)
+            {
+                string listName = ActiveMaterial.ParentLayout.Textures[i];
+                if (string.Equals(listName, textureName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetFileNameWithoutExtension((listName ?? string.Empty).Replace('\\', '/')), normalizedName, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+            return -1;
+        }
+
+        private void SyncTextureMapReference(BxlytTextureRef texMap)
+        {
+            if (texMap == null)
+                return;
+
+            int indexByName = FindLayoutTextureIndex(texMap.Name);
+            if (indexByName >= 0)
+            {
+                texMap.ID = (short)indexByName;
+                texMap.Name = ActiveMaterial.ParentLayout.Textures[indexByName];
+                return;
+            }
+
+            if (ActiveMaterial?.ParentLayout?.Textures != null &&
+                texMap.ID >= 0 && texMap.ID < ActiveMaterial.ParentLayout.Textures.Count)
+            {
+                texMap.Name = ActiveMaterial.ParentLayout.Textures[texMap.ID];
+            }
+        }
+
         private static void MarkMaterialEdited(BxlytMaterial material)
         {
             if (material is LayoutBXLYT.Revolution.Material revMaterial)
@@ -72,11 +137,14 @@ namespace LayoutBXLYT
 
             for (int i = 0; i < ActiveMaterial.TextureMaps?.Length; i++)
             {
-                string name = ActiveMaterial.TextureMaps[i].Name;
+                var texMap = ActiveMaterial.TextureMaps[i];
+                SyncTextureMapReference(texMap);
+                string name = texMap?.Name;
 
                 Bitmap bitmap = FirstPlugin.Properties.Resources.TextureError;
-                if (textureList.ContainsKey(name))
-                    bitmap = textureList[name].GetBitmap();
+                STGenericTexture texture;
+                if (TryGetTextureByName(name, out texture))
+                    bitmap = texture.GetBitmap();
 
                 Images.Add(bitmap);
 
@@ -176,6 +244,7 @@ namespace LayoutBXLYT
             texLoaded = false;
 
             var texMap = ActiveMaterial.TextureMaps[SelectedIndex];
+            SyncTextureMapReference(texMap);
             pictureBoxCustom1.Image = Images[SelectedIndex];
 
             wrapModeUCB.Bind(typeof(WrapMode), texMap, "WrapModeU");
@@ -315,6 +384,11 @@ namespace LayoutBXLYT
             {
                 string newTexture = selector.GetSelectedTexture();
                 ActiveMaterial.AddTexture(newTexture);
+                if (ActiveMaterial.TextureMaps.Length > 0)
+                {
+                    int addedIndex = ActiveMaterial.TextureMaps.Length - 1;
+                    SyncTextureMapReference(ActiveMaterial.TextureMaps[addedIndex]);
+                }
                 MarkMaterialEdited(ActiveMaterial);
 
                 //Apply to all selected panes
@@ -324,6 +398,15 @@ namespace LayoutBXLYT
                     if (mat != null && mat != ActiveMaterial && mat.TextureMaps?.Length != 3)
                     {
                         mat.AddTexture(newTexture);
+                        if (mat.TextureMaps.Length > 0)
+                        {
+                            int addedIndex = mat.TextureMaps.Length - 1;
+                            if (mat.TextureMaps[addedIndex] != null && mat.ParentLayout?.Textures != null &&
+                                mat.TextureMaps[addedIndex].ID >= 0 && mat.TextureMaps[addedIndex].ID < mat.ParentLayout.Textures.Count)
+                            {
+                                mat.TextureMaps[addedIndex].Name = mat.ParentLayout.Textures[mat.TextureMaps[addedIndex].ID];
+                            }
+                        }
                         MarkMaterialEdited(mat);
                     }
                 }
@@ -350,7 +433,7 @@ namespace LayoutBXLYT
                 {
                     string newTexture = selector.GetSelectedTexture();
                     texMap.ID = (short)ActiveMaterial.ParentLayout.AddTexture(newTexture);
-                    texMap.Name = newTexture;
+                    texMap.Name = ActiveMaterial.ParentLayout.Textures[texMap.ID];
                     MarkMaterialEdited(ActiveMaterial);
                     ReloadTexture();
                     ParentEditor.PropertyChanged?.Invoke(sender, e);
@@ -363,15 +446,27 @@ namespace LayoutBXLYT
                         {
                             if (mat.TextureMaps?.Length > SelectedIndex)
                             {
-                                mat.TextureMaps[SelectedIndex] = new BxlytTextureRef()
+                                // Keep the array element runtime type intact (format-specific TextureRef subclasses).
+                                var targetTexMap = mat.TextureMaps[SelectedIndex];
+                                if (targetTexMap == null)
                                 {
-                                    ID = texMap.ID,
-                                    Name = texMap.Name,
-                                    WrapModeU = texMap.WrapModeU,
-                                    WrapModeV = texMap.WrapModeV,
-                                    MinFilterMode = texMap.MinFilterMode,
-                                    MaxFilterMode = texMap.MaxFilterMode,
-                                };
+                                    var texRefType = mat.TextureMaps.GetType().GetElementType();
+                                    if (texRefType != null && typeof(BxlytTextureRef).IsAssignableFrom(texRefType))
+                                    {
+                                        targetTexMap = (BxlytTextureRef)Activator.CreateInstance(texRefType);
+                                        mat.TextureMaps[SelectedIndex] = targetTexMap;
+                                    }
+                                }
+
+                                if (targetTexMap != null)
+                                {
+                                    targetTexMap.ID = texMap.ID;
+                                    targetTexMap.Name = texMap.Name;
+                                    targetTexMap.WrapModeU = texMap.WrapModeU;
+                                    targetTexMap.WrapModeV = texMap.WrapModeV;
+                                    targetTexMap.MinFilterMode = texMap.MinFilterMode;
+                                    targetTexMap.MaxFilterMode = texMap.MaxFilterMode;
+                                }
                                 MarkMaterialEdited(mat);
                             }
                             else
@@ -412,7 +507,7 @@ namespace LayoutBXLYT
             }
             else
             {
-                SelectedIndex = SelectedIndex - 1;
+                SelectedIndex = Math.Min(Math.Max(SelectedIndex, 0), ActiveMaterial.TextureMaps.Length - 1);
                 ReloadTexture();
                 SelectImage(SelectedIndex);
                 ParentEditor.PropertyChanged?.Invoke(sender, e);
